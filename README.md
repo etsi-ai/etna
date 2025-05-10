@@ -12,13 +12,16 @@ prototyping, learning, and quick deployments.
 
 ## 🚀 Quickstart
 
-\`\`\`bash pip install etsi-etna
+```bash
+ pip install etsi-etna
+```
 
+```bash 
 import etsi.etna as etna
 
 model = etna.Model("diabetes.csv", target="Outcome") model.train()
 model.evaluate()
-
+```
 ------------------------------------------------------------------------
 
 ## 🔮 Features
