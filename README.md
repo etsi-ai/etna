@@ -40,7 +40,7 @@ model.evaluate()
 
 ## 🤝 Contributing Pull requests are welcome!
 
-Please refer to CONTRIBUTING.md for contribution guidelines and ensure
+Please refer to [CONTRIBUTING.md](https://github.com/etsi-ai/etna/blob/main/CONTRIBUTING.md) for contribution guidelines and ensure
 your code passes:
 
 bash Copy Edit make check Use 4 spaces for indentation
