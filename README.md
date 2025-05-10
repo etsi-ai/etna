@@ -9,6 +9,11 @@ simple linear networks, and core metrics --- ideal for research
 prototyping, learning, and quick deployments.
 
 ------------------------------------------------------------------------
+## Installation
+
+[CONTRIBUTING.md](https://github.com/etsi-ai/etna/blob/main/INSTALL.md)
+
+------------------------------------------------------------------------
 
 ## 🚀 Quickstart
 
@@ -41,7 +46,9 @@ model.evaluate()
 ------------------------------------------------------------------------
 
 
-## 🤝 Contributing Pull requests are welcome!
+## 🤝 Contributing
+
+Pull requests are welcome!
 
 Please refer to [CONTRIBUTING.md](https://github.com/etsi-ai/etna/blob/main/CONTRIBUTING.md) for contribution guidelines and ensure
 your code passes:
