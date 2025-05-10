@@ -11,7 +11,7 @@ prototyping, learning, and quick deployments.
 ------------------------------------------------------------------------
 ## Installation
 
-[CONTRIBUTING.md](https://github.com/etsi-ai/etna/blob/main/INSTALL.md)
+[Installation guide](https://github.com/etsi-ai/etna/blob/main/INSTALL.md)
 
 ------------------------------------------------------------------------
 
