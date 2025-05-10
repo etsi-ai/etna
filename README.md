@@ -38,6 +38,9 @@ model.evaluate()
 
 🪶 No hard dependencies --- minimal & fast
 
+------------------------------------------------------------------------
+
+
 ## 🤝 Contributing Pull requests are welcome!
 
 Please refer to [CONTRIBUTING.md](https://github.com/etsi-ai/etna/blob/main/CONTRIBUTING.md) for contribution guidelines and ensure
@@ -50,6 +53,8 @@ your code passes:
 
 Follow consistent commit messages 
 Example: \[fix\] model.py: fixed one-hot bug
+
+------------------------------------------------------------------------
 
 
 ## 📄 License
