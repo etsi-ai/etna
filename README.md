@@ -43,15 +43,23 @@ model.evaluate()
 Please refer to [CONTRIBUTING.md](https://github.com/etsi-ai/etna/blob/main/CONTRIBUTING.md) for contribution guidelines and ensure
 your code passes:
 
-bash Copy Edit make check Use 4 spaces for indentation
+```bash
+ make check 
+```
 
-Follow consistent commit messages Example: \[fix\] model.py: fixed
-one-hot bug
 
-By contributing, you agree to license your code under the BSD-2-Clause
-license.
+Follow consistent commit messages 
+Example: \[fix\] model.py: fixed one-hot bug
 
-## 📄 License This project is distributed under the BSD-2-Clause License.
+
+## 📄 License
+
+This project is distributed under the BSD-2-Clause License.
+By contributing, you agree to license your code under the BSD-2-Clause license.
+
+
+------------------------------------------------------------------------
+
 
 Built with ❤️ by etsi.ai "Making machine learning simple, again."
 
