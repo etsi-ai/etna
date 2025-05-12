@@ -1,21 +1,18 @@
 // Model training/prediction logic
-//
-
-// model.rs - Full Working Version (Neural Network in Rust)
-
 use crate::layers::{Linear, ReLU, Softmax};
 use crate::loss_function::cross_entropy;
 use crate::optimizer::SGD;
+
 
 pub struct SimpleNN {
     linear1: Linear,
     relu: ReLU,
     linear2: Linear,
     softmax: Softmax,
-    input_cache: Vec<Vec<f32>>,
-    hidden_cache: Vec<Vec<f32>>,
-    logits_cache: Vec<Vec<f32>>,
-    probs_cache: Vec<Vec<f32>>,
+    input_cache: Vec<Vec<f32>>,  // Cache input for backprop
+    hidden_cache: Vec<Vec<f32>>, // Cache hidden layer values
+    logits_cache: Vec<Vec<f32>>, // Cache logits
+    probs_cache: Vec<Vec<f32>>, // Cache probabilities
 }
 
 impl SimpleNN {
@@ -32,39 +29,21 @@ impl SimpleNN {
         }
     }
 
-    // Forward pass for the entire batch (Vec<Vec<f32>>)
     pub fn forward(&mut self, x: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
-        let mut hidden_post: Vec<Vec<f32>> = vec![];
+        let hidden_pre = self.linear1.forward(x); // Forward pass for linear1
+        let hidden_post = ReLU::forward(&hidden_pre); // ReLU activation
+        let logits = self.linear2.forward(&hidden_post); // Forward pass for linear2
+        let probs = logits.iter().map(|logit| Softmax::forward(logit)).collect::<Vec<Vec<f32>>>(); // Softmax activation
 
-        // For each input (row) in the batch
-        for input in x {
-            let hidden_pre = self.linear1.forward(&vec![input.clone()]); // Forward pass for one sample
-            let hidden_post_sample = ReLU::forward(&hidden_pre[0]); // Apply ReLU for one sample
-            hidden_post.push(hidden_post_sample);
-        }
-
-        let mut logits: Vec<Vec<f32>> = vec![];
-        for sample in hidden_post.iter() {
-            let logit = self.linear2.forward(&vec![sample.clone()]);
-            logits.push(logit[0]); // Assuming a batch size of 1 per sample
-        }
-
-        let mut probs: Vec<Vec<f32>> = vec![];
-        for logit in logits.iter() {
-            let prob = Softmax::forward(logit);
-            probs.push(prob);
-        }
-
-        // Cache values
+        // Cache intermediate values
         self.input_cache = x.clone();
-        self.hidden_cache = hidden_post.clone();
-        self.logits_cache = logits.clone();
+        self.hidden_cache = hidden_post;
+        self.logits_cache = logits;
         self.probs_cache = probs.clone();
 
         probs
     }
 
-    // Training function, adjust for batch processing
     pub fn train(&mut self, x: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>, epochs: usize, lr: f32) {
         let mut optimizer = SGD::new(lr);
 
@@ -72,31 +51,12 @@ impl SimpleNN {
             let preds = self.forward(x);
             let loss = cross_entropy(&preds, y);
 
-            let mut grad_softmax: Vec<Vec<f32>> = vec![];
-            for (i, pred) in preds.iter().enumerate() {
-                let grad = Softmax::backward(pred, &y[i]);
-                grad_softmax.push(grad);
-            }
+            let grad_softmax = Softmax::backward(&preds, y); // Softmax backward pass
+            let grad_linear2 = self.linear2.backward(&grad_softmax, &self.hidden_cache); // Linear2 backward pass
+            let grad_relu = ReLU::backward(&grad_linear2, &self.hidden_cache); // ReLU backward pass
+            let _grad_linear1 = self.linear1.backward(&grad_relu, &self.input_cache); // Linear1 backward pass
 
-            let mut grad_linear2: Vec<Vec<f32>> = vec![];
-            for (i, grad) in grad_softmax.iter().enumerate() {
-                let grad_layer2 = self.linear2.backward(grad, &self.hidden_cache[i]);
-                grad_linear2.push(grad_layer2);
-            }
-
-            let mut grad_relu: Vec<Vec<f32>> = vec![];
-            for (i, grad) in grad_linear2.iter().enumerate() {
-                let grad_relu_layer = ReLU::backward(grad, &self.hidden_cache[i]);
-                grad_relu.push(grad_relu_layer);
-            }
-
-            let mut grad_linear1: Vec<Vec<f32>> = vec![];
-            for (i, grad) in grad_relu.iter().enumerate() {
-                let grad_layer1 = self.linear1.backward(grad, &self.input_cache[i]);
-                grad_linear1.push(grad_layer1);
-            }
-
-            // Update the weights after the backward pass
+            // Update parameters using stored gradients
             self.linear1.update(&mut optimizer);
             self.linear2.update(&mut optimizer);
 
@@ -104,7 +64,6 @@ impl SimpleNN {
         }
     }
 
-    // Prediction function for the entire batch
     pub fn predict(&mut self, x: &Vec<Vec<f32>>) -> Vec<usize> {
         let probs = self.forward(x);
         probs.iter()
