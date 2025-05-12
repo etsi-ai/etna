@@ -1,1 +1,21 @@
-#  Rust crate configuration
+[package]
+name = "etna_rust"
+version = "0.1.0"
+edition = "2021"
+authors = ["etsi.ai <contact@etsi.ai>"]
+description = "Rust core for etsi.etna: pure neural network backend"
+license = "BSD-2-Clause"
+readme = "README.md"
+
+[lib]
+name = "etna_rust"
+crate-type = ["cdylib"]  # Needed for building Python extension
+
+[dependencies]
+pyo3 = { version = "0.20", features = ["extension-module"] }
+
+[build-dependencies]
+maturin = "1.4"
+
+[package.metadata.maturin]
+name = "etsi_etna._etna_rust"
