@@ -13,6 +13,8 @@ crate-type = ["cdylib"]  # Needed for building Python extension
 
 [dependencies]
 pyo3 = { version = "0.20", features = ["extension-module"] }
+rand = "0.8"
+
 
 [build-dependencies]
 maturin = "1.4"

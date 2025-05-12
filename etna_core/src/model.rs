@@ -1,32 +1,52 @@
 // Model training/prediction logic
 //
 
+// model.rs - Full Working Version (Neural Network in Rust)
+
 use crate::layers::{Linear, ReLU, Softmax};
-use crate::loss::cross_entropy;
-use crate::optim::SGD;
+use crate::loss_function::cross_entropy;
+use crate::optimizer::SGD;
 
 pub struct SimpleNN {
     linear1: Linear,
     relu: ReLU,
     linear2: Linear,
     softmax: Softmax,
+    input_cache: Vec<Vec<f32>>,
+    hidden_cache: Vec<Vec<f32>>,
+    logits_cache: Vec<Vec<f32>>,
+    probs_cache: Vec<Vec<f32>>,
 }
+
+
 
 impl SimpleNN {
     pub fn new(input_dim: usize, hidden_dim: usize, output_dim: usize) -> Self {
         Self {
             linear1: Linear::new(input_dim, hidden_dim),
-            relu: ReLU::new(),
+            relu: ReLU,
             linear2: Linear::new(hidden_dim, output_dim),
-            softmax: Softmax::new(),
+            softmax: Softmax,
+            input_cache: vec![],
+            hidden_cache: vec![],
+            logits_cache: vec![],
+            probs_cache: vec![],
         }
     }
 
     pub fn forward(&mut self, x: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
-        let out1 = self.linear1.forward(x);
-        let out2 = self.relu.forward(&out1);
-        let out3 = self.linear2.forward(&out2);
-        self.softmax.forward(&out3)
+        let hidden_pre = self.linear1.forward(x);
+        let hidden_post = self.relu.forward(&hidden_pre);
+        let logits = self.linear2.forward(&hidden_post);
+        let probs = self.softmax.forward(&logits);
+
+        // Cache values
+        self.input_cache = x.clone();
+        self.hidden_cache = hidden_post;
+        self.logits_cache = logits;
+        self.probs_cache = probs.clone();
+
+        probs
     }
 
     pub fn train(
@@ -39,22 +59,14 @@ impl SimpleNN {
         let mut optimizer = SGD::new(lr);
 
         for epoch in 0..epochs {
-            // Forward pass
-            let out1 = self.linear1.forward(x);
-            let out2 = self.relu.forward(&out1);
-            let out3 = self.linear2.forward(&out2);
-            let preds = self.softmax.forward(&out3);
-
-            // Loss + gradient
+            let preds = self.forward(x);
             let loss = cross_entropy(&preds, y);
-            let grad = self.softmax.backward(y);
 
-            // Backward pass
-            let grad2 = self.linear2.backward(&grad, &out2);
-            let grad1 = self.relu.backward(&grad2);
-            let _ = self.linear1.backward(&grad1, x);
+            let grad_softmax = self.softmax.backward(&preds, y);
+            let grad_linear2 = self.linear2.backward(&grad_softmax, &self.hidden_cache);
+            let grad_relu = self.relu.backward(&grad_linear2, &self.hidden_cache);
+            let _grad_linear1 = self.linear1.backward(&grad_relu, &self.input_cache);
 
-            // Update
             self.linear1.update(&mut optimizer);
             self.linear2.update(&mut optimizer);
 

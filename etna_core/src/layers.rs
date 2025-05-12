@@ -1,6 +1,9 @@
 // # Layers (Linear, ReLU, Softmax, etc.)
 
 
+use rand::Rng;
+
+/// Fully connected layer: y = Wx + b
 pub struct Linear {
     pub input_size: usize,
     pub output_size: usize,
@@ -10,13 +13,12 @@ pub struct Linear {
 
 impl Linear {
     pub fn new(input_size: usize, output_size: usize) -> Self {
-        use rand::Rng;
-
         let mut rng = rand::thread_rng();
+
         let weights = (0..output_size)
             .map(|_| {
                 (0..input_size)
-                    .map(|_| rng.gen_range(-0.01..0.01))
+                    .map(|_| rng.gen_range(-0.01..0.01)) // Random init
                     .collect()
             })
             .collect();
@@ -31,6 +33,7 @@ impl Linear {
         }
     }
 
+    /// Forward pass: output = weights * input + bias
     pub fn forward(&self, input: &Vec<f32>) -> Vec<f32> {
         let mut output = vec![0.0; self.output_size];
 
@@ -45,6 +48,7 @@ impl Linear {
     }
 }
 
+/// ReLU activation function
 pub struct ReLU;
 
 impl ReLU {
@@ -53,6 +57,7 @@ impl ReLU {
     }
 }
 
+/// Softmax activation function (output layer)
 pub struct Softmax;
 
 impl Softmax {
