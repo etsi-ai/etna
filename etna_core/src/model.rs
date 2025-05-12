@@ -18,8 +18,6 @@ pub struct SimpleNN {
     probs_cache: Vec<Vec<f32>>,
 }
 
-
-
 impl SimpleNN {
     pub fn new(input_dim: usize, hidden_dim: usize, output_dim: usize) -> Self {
         Self {
@@ -36,9 +34,9 @@ impl SimpleNN {
 
     pub fn forward(&mut self, x: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
         let hidden_pre = self.linear1.forward(x);
-        let hidden_post = self.relu.forward(&hidden_pre);
+        let hidden_post = ReLU::forward(&hidden_pre);
         let logits = self.linear2.forward(&hidden_post);
-        let probs = self.softmax.forward(&logits);
+        let probs = logits.iter().map(|logit| Softmax::forward(logit)).collect::<Vec<Vec<f32>>>();
 
         // Cache values
         self.input_cache = x.clone();
@@ -49,22 +47,16 @@ impl SimpleNN {
         probs
     }
 
-    pub fn train(
-        &mut self,
-        x: &Vec<Vec<f32>>,
-        y: &Vec<Vec<f32>>,
-        epochs: usize,
-        lr: f32,
-    ) {
+    pub fn train(&mut self, x: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>, epochs: usize, lr: f32) {
         let mut optimizer = SGD::new(lr);
 
         for epoch in 0..epochs {
             let preds = self.forward(x);
             let loss = cross_entropy(&preds, y);
 
-            let grad_softmax = self.softmax.backward(&preds, y);
+            let grad_softmax = Softmax::backward(&preds, y);
             let grad_linear2 = self.linear2.backward(&grad_softmax, &self.hidden_cache);
-            let grad_relu = self.relu.backward(&grad_linear2, &self.hidden_cache);
+            let grad_relu = ReLU::backward(&grad_linear2, &self.hidden_cache);
             let _grad_linear1 = self.linear1.backward(&grad_relu, &self.input_cache);
 
             self.linear1.update(&mut optimizer);

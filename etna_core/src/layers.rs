@@ -1,71 +1,78 @@
 // # Layers (Linear, ReLU, Softmax, etc.)
 
 
-use rand::Rng;
+// use rand::Rng;
+
+use crate::optimizer::SGD;
 
 /// Fully connected layer: y = Wx + b
+// Linear Layer (implementing forward, backward, and update)
 pub struct Linear {
-    pub input_size: usize,
-    pub output_size: usize,
-    pub weights: Vec<Vec<f32>>, // shape: [output_size][input_size]
-    pub bias: Vec<f32>,         // shape: [output_size]
+    weights: Vec<Vec<f32>>,
+    bias: Vec<f32>,
+    input_size: usize,
+    output_size: usize,
 }
 
 impl Linear {
     pub fn new(input_size: usize, output_size: usize) -> Self {
-        let mut rng = rand::thread_rng();
-
-        let weights = (0..output_size)
-            .map(|_| {
-                (0..input_size)
-                    .map(|_| rng.gen_range(-0.01..0.01)) // Random init
-                    .collect()
-            })
-            .collect();
-
+        let weights = vec![vec![0.0; input_size]; output_size];
         let bias = vec![0.0; output_size];
-
-        Linear {
-            input_size,
-            output_size,
-            weights,
-            bias,
-        }
+        Linear { weights, bias, input_size, output_size }
     }
 
-    /// Forward pass: output = weights * input + bias
-    pub fn forward(&self, input: &Vec<f32>) -> Vec<f32> {
-        let mut output = vec![0.0; self.output_size];
+    pub fn forward(&self, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        input.iter().map(|x| {
+            self.weights.iter()
+                .map(|w| w.iter().zip(x.iter()).map(|(w_val, x_val)| w_val * x_val).sum::<f32>() + self.bias.iter().sum::<f32>())
+                .collect::<Vec<f32>>()
+        }).collect()
+    }
 
-        for i in 0..self.output_size {
-            for j in 0..self.input_size {
-                output[i] += self.weights[i][j] * input[j];
+    pub fn backward(&self, grad_output: &Vec<Vec<f32>>, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        grad_output.iter().map(|grad| {
+            self.weights.iter().map(|weight| grad.iter().zip(weight.iter()).map(|(g, w)| g * w).sum::<f32>())
+                .collect::<Vec<f32>>()
+        }).collect()
+    }
+
+    pub fn update(&mut self, optimizer: &mut SGD) {
+        for (w, b) in self.weights.iter_mut().zip(self.bias.iter_mut()) {
+            for weight in w {
+                *weight -= optimizer.learning_rate; // Simple gradient descent
             }
-            output[i] += self.bias[i];
+            *b -= optimizer.learning_rate;
         }
-
-        output
     }
 }
 
-/// ReLU activation function
+// ReLU Layer (implementing forward and backward)
 pub struct ReLU;
 
 impl ReLU {
     pub fn forward(input: &Vec<f32>) -> Vec<f32> {
         input.iter().map(|x| x.max(0.0)).collect()
     }
+
+    pub fn backward(grad_output: &Vec<f32>, input: &Vec<f32>) -> Vec<f32> {
+        grad_output.iter().zip(input.iter())
+            .map(|(g, i)| if *i > 0.0 { *g } else { 0.0 })
+            .collect()
+    }
 }
 
-/// Softmax activation function (output layer)
+// Softmax Layer (implementing forward and backward)
 pub struct Softmax;
 
 impl Softmax {
-    pub fn forward(input: &Vec<f32>) -> Vec<f32> {
-        let max = input.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-        let exps: Vec<f32> = input.iter().map(|x| (x - max).exp()).collect();
-        let sum: f32 = exps.iter().sum();
+    pub fn forward(logits: &Vec<f32>) -> Vec<f32> {
+        let max_val = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let exp_vals: Vec<f32> = logits.iter().map(|x| (x - max_val).exp()).collect();
+        let sum_exp: f32 = exp_vals.iter().sum();
+        exp_vals.iter().map(|x| x / sum_exp).collect()
+    }
 
-        exps.iter().map(|x| x / sum).collect()
+    pub fn backward(preds: &Vec<f32>, y: &Vec<f32>) -> Vec<f32> {
+        preds.iter().zip(y.iter()).map(|(p, t)| p - t).collect()
     }
 }

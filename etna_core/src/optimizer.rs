@@ -1,13 +1,14 @@
 // # Optimizers (SGD, Adam, etc.)
 
 /// Simple Stochastic Gradient Descent (SGD) optimizer
+
 pub struct SGD {
     pub learning_rate: f32,
 }
 
 impl SGD {
     pub fn new(learning_rate: f32) -> Self {
-        Self { learning_rate }
+        SGD { learning_rate }
     }
 
     // Update weights and biases in-place
