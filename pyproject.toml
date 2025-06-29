@@ -15,6 +15,9 @@ dependencies = [
 ]
 dynamic = ["version"]
 
+[project.scripts]
+etna = "etna.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=6.0",
