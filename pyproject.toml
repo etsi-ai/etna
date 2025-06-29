@@ -1,1 +1,36 @@
- # Python build configuration (with maturin)
+[build-system]
+requires = ["maturin>=1.0,<2.0", "numpy>=1.21.0"]
+build-backend = "maturin"
+
+[project]
+name = "etna"
+description = "A neural network framework with Rust core and Python interface"
+authors = [
+    {name = "ETNA Team"}
+]
+license = {text = "MIT"}
+requires-python = ">=3.8"
+dependencies = [
+    "numpy>=1.21.0",
+]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0",
+    "pytest-cov",
+    "black",
+    "flake8",
+]
+
+[tool.maturin]
+module-name = "etna._etna_rust"
+python-source = "."
+
+[tool.black]
+line-length = 88
+target-version = ['py38']
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
