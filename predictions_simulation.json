@@ -1,0 +1,11 @@
+{
+  "predictions": [
+    0,
+    0,
+    1,
+    0
+  ],
+  "simulation": true,
+  "model_type": "ETNA_SIMULATION",
+  "data_size": 4
+}

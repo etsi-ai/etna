@@ -1,0 +1,20 @@
+{
+  "epochs": 100,
+  "learning_rate": 0.01,
+  "batch_size": 32,
+  "hidden_dim": 16,
+  "optimizer": "sgd",
+  "activation": "relu",
+  "loss_function": "cross_entropy",
+  "verbose": true,
+  "early_stopping": {
+    "enabled": false,
+    "patience": 10,
+    "min_delta": 0.001
+  },
+  "regularization": {
+    "l1": 0.0,
+    "l2": 0.0,
+    "dropout": 0.0
+  }
+}
