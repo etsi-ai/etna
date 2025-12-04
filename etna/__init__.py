@@ -19,50 +19,40 @@ __version__ = "0.1.0"
 __author__ = "ETNA Team"
 
 # Import main modules
-try:
-    from . import metrics
-    from . import api
-    from . import preprocessing
-    from . import utils
-    from . import cli
-    
-    # Import commonly used functions for convenience
-    from .metrics import (
-        accuracy_score,
-        precision_recall_f1_score,
-        confusion_matrix_score,
-        mean_squared_error_score,
-        r2_score,
-        ClassificationMetrics,
-        RegressionMetrics,
-        CrossEntropyLoss
-    )
-    
-    __all__ = [
-        # Modules
-        'metrics',
-        'api', 
-        'preprocessing',
-        'utils',
-        'cli',
-        
-        # Commonly used functions
-        'accuracy_score',
-        'precision_recall_f1_score', 
-        'confusion_matrix_score',
-        'mean_squared_error_score',
-        'r2_score',
-        
-        # Classes
-        'ClassificationMetrics',
-        'RegressionMetrics', 
-        'CrossEntropyLoss',
-    ]
-    
-except ImportError as e:
-    # Handle missing dependencies gracefully
-    import warnings
-    warnings.warn(f"Some ETNA modules could not be imported: {e}")
-    
-    # Minimal exports when dependencies are missing
-    __all__ = ['__version__', '__author__']
+from . import metrics
+from . import api
+from . import preprocessing
+from . import utils
+from . import cli
+
+# --- THIS IS THE KEY FIX ---
+from .api import Model 
+# ---------------------------
+
+from .metrics import (
+    accuracy_score,
+    precision_recall_f1_score,
+    confusion_matrix_score,
+    mean_squared_error_score,
+    r2_score,
+    ClassificationMetrics,
+    RegressionMetrics,
+    CrossEntropyLoss
+)
+
+__all__ = [
+    'Model',
+    'metrics',
+    'api', 
+    'preprocessing',
+    'utils',
+    'cli',
+    'accuracy_score',
+    'precision_recall_f1_score', 
+    'confusion_matrix_score',
+    'mean_squared_error_score',
+    'r2_score',
+    'ClassificationMetrics',
+    'RegressionMetrics', 
+    'CrossEntropyLoss',
+]

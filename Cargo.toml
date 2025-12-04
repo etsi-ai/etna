@@ -2,3 +2,4 @@
 members = [
     "etna_core"
 ]
+resolver = "2"

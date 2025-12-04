@@ -25,12 +25,5 @@ dev = [
 
 [tool.maturin]
 module-name = "etna._etna_rust"
+manifest-path = "etna_core/Cargo.toml"
 python-source = "."
-
-[tool.black]
-line-length = 88
-target-version = ['py38']
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
