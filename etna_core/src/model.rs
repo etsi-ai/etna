@@ -1,27 +1,34 @@
 // Model training/prediction logic
 use crate::layers::{Linear, ReLU, Softmax};
-use crate::loss_function::cross_entropy;
+use crate::loss_function::{cross_entropy, mse};
 use crate::optimizer::SGD;
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum TaskType {
+    Classification,
+    Regression,
+}
 
 pub struct SimpleNN {
     linear1: Linear,
     relu: ReLU,
     linear2: Linear,
-    softmax: Softmax,
-    input_cache: Vec<Vec<f32>>,  // Cache input for backprop
-    hidden_cache: Vec<Vec<f32>>, // Cache hidden layer values
-    logits_cache: Vec<Vec<f32>>, // Cache logits
-    probs_cache: Vec<Vec<f32>>, // Cache probabilities
+    task_type: TaskType,
+    input_cache: Vec<Vec<f32>>,
+    hidden_cache: Vec<Vec<f32>>,
+    logits_cache: Vec<Vec<f32>>,
+    probs_cache: Vec<Vec<f32>>,
 }
 
 impl SimpleNN {
-    pub fn new(input_dim: usize, hidden_dim: usize, output_dim: usize) -> Self {
+    pub fn new(input_dim: usize, hidden_dim: usize, output_dim: usize, task_code: usize) -> Self {
+        let task_type = if task_code == 1 { TaskType::Regression } else { TaskType::Classification };
+        
         Self {
             linear1: Linear::new(input_dim, hidden_dim),
             relu: ReLU,
             linear2: Linear::new(hidden_dim, output_dim),
-            softmax: Softmax,
+            task_type, // 0 = Classification, 1 = Regression
             input_cache: vec![],
             hidden_cache: vec![],
             logits_cache: vec![],
@@ -30,18 +37,22 @@ impl SimpleNN {
     }
 
     pub fn forward(&mut self, x: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
-        let hidden_pre = self.linear1.forward(x); // Forward pass for linear1
-        let hidden_post = ReLU::forward(&hidden_pre); // ReLU activation
-        let logits = self.linear2.forward(&hidden_post); // Forward pass for linear2
-        let probs = logits.iter().map(|logit| Softmax::forward(logit)).collect::<Vec<Vec<f32>>>(); // Softmax activation
+        let hidden_pre = self.linear1.forward(x);
+        let hidden_post = ReLU::forward(&hidden_pre);
+        let logits = self.linear2.forward(&hidden_post);
+        
+        // Only apply Softmax for Classification
+        let output = match self.task_type {
+            TaskType::Classification => logits.iter().map(|l| Softmax::forward(l)).collect(),
+            TaskType::Regression => logits.clone(),
+        };
 
-        // Cache intermediate values
         self.input_cache = x.clone();
         self.hidden_cache = hidden_post;
-        self.logits_cache = logits;
-        self.probs_cache = probs.clone();
+        self.logits_cache = logits; 
+        self.probs_cache = output.clone();
 
-        probs
+        output
     }
 
     pub fn train(&mut self, x: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>, epochs: usize, lr: f32) {
@@ -49,29 +60,55 @@ impl SimpleNN {
 
         for epoch in 0..epochs {
             let preds = self.forward(x);
-            let loss = cross_entropy(&preds, y);
+            
+            let (loss, grad_output) = match self.task_type {
+                TaskType::Classification => {
+                    let loss_val = cross_entropy(&preds, y);
+                    let grad = Softmax::backward(&preds, y); 
+                    (loss_val, grad)
+                },
+                TaskType::Regression => {
+                    let loss_val = mse(&preds, y);
+                    // Gradient of MSE: (pred - target)
+                    let grad = preds.iter().zip(y.iter())
+                        .map(|(p_row, y_row)| {
+                            p_row.iter().zip(y_row.iter()).map(|(p, t)| p - t).collect()
+                        }).collect();
+                    (loss_val, grad)
+                }
+            };
 
-            let grad_softmax = Softmax::backward(&preds, y); // Softmax backward pass
-            let grad_linear2 = self.linear2.backward(&grad_softmax, &self.hidden_cache); // Linear2 backward pass
-            let grad_relu = ReLU::backward(&grad_linear2, &self.hidden_cache); // ReLU backward pass
-            let _grad_linear1 = self.linear1.backward(&grad_relu, &self.input_cache); // Linear1 backward pass
+            let grad_linear2 = self.linear2.backward(&grad_output, &self.hidden_cache);
+            let grad_relu = ReLU::backward(&grad_linear2, &self.hidden_cache);
+            let _grad_linear1 = self.linear1.backward(&grad_relu, &self.input_cache);
 
-            // Update parameters using stored gradients
             self.linear1.update(&mut optimizer);
             self.linear2.update(&mut optimizer);
 
-            println!("Epoch {}/{} - Loss: {:.4}", epoch + 1, epochs, loss);
+            if epoch % 10 == 0 {
+                println!("Epoch {}/{} - Loss: {:.4}", epoch, epochs, loss);
+            }
         }
     }
 
-    pub fn predict(&mut self, x: &Vec<Vec<f32>>) -> Vec<usize> {
-        let probs = self.forward(x);
-        probs.iter()
-            .map(|row| row.iter()
-                .enumerate()
-                .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-                .map(|(i, _)| i)
-                .unwrap_or(0))
-            .collect()
+    pub fn predict(&mut self, x: &Vec<Vec<f32>>) -> Vec<f32> {
+        let output = self.forward(x);
+        
+        match self.task_type {
+            TaskType::Classification => {
+                // Return class indices as floats
+                output.iter()
+                    .map(|row| row.iter()
+                        .enumerate()
+                        .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+                        .map(|(i, _)| i as f32)
+                        .unwrap_or(0.0))
+                    .collect()
+            },
+            TaskType::Regression => {
+                // Return value
+                output.iter().map(|row| row[0]).collect()
+            }
+        }
     }
 }

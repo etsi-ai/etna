@@ -1,1 +1,82 @@
 #  User-facing API (Classifier, Regression)
+
+from .utils import load_data
+from .preprocessing import Preprocessor
+from . import _etna_rust 
+import pandas as pd
+import numpy as np
+
+class Model:
+    def __init__(self, file_path: str, target: str, task_type: str = None):
+        """
+        Initializes the ETNA model.
+        Args:
+            file_path: Path to the .csv dataset
+            target: Name of the target column
+            task_type: 'classification', 'regression', or None (auto-detect)
+        """
+        self.file_path = file_path
+        self.target = target
+        self.df = load_data(file_path)
+        
+        # 1. Determine Task Type
+        if task_type:
+            # User override
+            self.task_type = task_type.lower()
+            self.task_code = 1 if self.task_type == "regression" else 0
+            print(f"🔮 User Task: {self.task_type.capitalize()} (Target '{target}')")
+        else:
+            # Auto-detect
+            target_data = self.df[target]
+            is_numeric = pd.api.types.is_numeric_dtype(target_data)
+            num_unique = target_data.nunique()
+            
+            # Heuristic: If it's string OR (it's numeric BUT has few unique values relative to size), assume classification
+            if not is_numeric or (num_unique < 20 and num_unique < len(self.df) * 0.5):
+                self.task_type = "classification"
+                self.task_code = 0
+                print(f"🔮 Auto-Detected Task: Classification (Target '{target}')")
+            else:
+                self.task_type = "regression"
+                self.task_code = 1
+                print(f"🔮 Auto-Detected Task: Regression (Target '{target}')")
+            
+        self.preprocessor = Preprocessor(self.task_type)
+        self.rust_model = None
+
+    def train(self, epochs=100, lr=0.01):
+        print("⚙️  Preprocessing data...")
+        X, y = self.preprocessor.fit_transform(self.df, self.target)
+        
+        input_dim = len(X[0])
+        hidden_dim = 16 
+        output_dim = self.preprocessor.output_dim
+        
+        print(f"🚀 Initializing Rust Core [In: {input_dim}, Out: {output_dim}]...")
+        self.rust_model = _etna_rust.EtnaModel(input_dim, hidden_dim, output_dim, self.task_code)
+        
+        print("🔥 Training started...")
+        self.rust_model.train(X, y, epochs, lr)
+        print("✅ Training complete!")
+
+    def predict(self, data_path=None):
+        if self.rust_model is None:
+            raise Exception("Model not trained yet! Call .train() first.")
+            
+        if data_path:
+            df = load_data(data_path)
+        else:
+            df = self.df.drop(columns=[self.target])
+            
+        print("⚙️  Transforming input data...")
+        X_new = self.preprocessor.transform(df)
+        preds = self.rust_model.predict(X_new)
+        
+        if self.task_type == "classification":
+            inv_map = {v: k for k, v in self.preprocessor.target_mapping.items()}
+            # Convert to standard Python types
+            return [inv_map.get(int(p), "Unknown") for p in preds]
+        else:
+            # Reverse scaling for regression and return Python floats
+            results = [(p * self.preprocessor.target_std) + self.preprocessor.target_mean for p in preds]
+            return [float(r) for r in results]
