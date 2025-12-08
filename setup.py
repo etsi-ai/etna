@@ -14,6 +14,8 @@ setup(
     packages=find_packages(),
     install_requires=[
         "numpy>=1.21.0",
+        "pandas>=1.0.0",
+        "mlflow>=2.0.0",
     ],
     extras_require={
         "dev": [

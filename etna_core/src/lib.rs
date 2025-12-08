@@ -1,5 +1,7 @@
 // Rust-Python bridge (pyo3)
 
+#![allow(dead_code)]
+
 mod model;
 mod layers;
 mod loss_function;
@@ -32,17 +34,28 @@ impl EtnaModel {
         }
     }
 
-    fn train(&mut self, x: &Bound<'_, PyList>, y: &Bound<'_, PyList>, epochs: usize, lr: f32) -> PyResult<()> {
+    fn train(&mut self, x: &Bound<'_, PyList>, y: &Bound<'_, PyList>, epochs: usize, lr: f32) -> PyResult<Vec<f32>> {
         let x_vec = pylist_to_vec2(x);
         let y_vec = pylist_to_vec2(y);
-        self.inner.train(&x_vec, &y_vec, epochs, lr);
-        Ok(())
+        
+        // Capture the history returned by Rust
+        let history = self.inner.train(&x_vec, &y_vec, epochs, lr);
+        
+        // Return it to Python
+        Ok(history)
     }
 
     fn predict(&mut self, x: &Bound<'_, PyList>) -> PyResult<Vec<f32>> {
         let x_vec = pylist_to_vec2(x);
         let preds = self.inner.predict(&x_vec);
         Ok(preds)
+    }
+
+    fn save(&self, path: String) -> PyResult<()> {
+        self.inner.save(&path).map_err(|e| {
+            pyo3::exceptions::PyIOError::new_err(format!("Failed to save model: {}", e))
+        })?;
+        Ok(())
     }
 }
 

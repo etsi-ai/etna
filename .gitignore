@@ -27,3 +27,16 @@ venv/
 dummy_data.csv
 dummy_reg.csv
 .ipynb_checkpoints/
+
+# --- MLflow & Tracking ---
+mlruns/
+mlartifacts/
+mlflow.db
+.trash/
+
+# --- Model Checkpoints ---
+*.pt
+*.pth
+*.ckpt
+*_model.json
+*_regressor.json

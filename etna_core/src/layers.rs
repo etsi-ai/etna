@@ -1,14 +1,15 @@
 // # Layers (Linear, ReLU, Softmax, etc.)
 
 
-// use rand::Rng;
-
+use rand::Rng;
 use crate::optimizer::SGD;
+use serde::{Serialize, Deserialize};
 
 /// Fully connected layer: y = Wx + b
 // Linear Layer (implementing forward, backward, and update)
 // Linear Layer (implementing forward, backward, and update)
 
+#[derive(Serialize, Deserialize)]
 pub struct Linear {
     weights: Vec<Vec<f32>>,
     bias: Vec<f32>,
@@ -21,8 +22,16 @@ pub struct Linear {
 
 impl Linear {
     pub fn new(input_size: usize, output_size: usize) -> Self {
-        let weights = vec![vec![0.0; input_size]; output_size];
+        let mut rng = rand::thread_rng();
+        
+        // Initialize weights with small random values (e.g., between -0.1 and 0.1)
+        let weights = (0..output_size)
+            .map(|_| (0..input_size).map(|_| rng.gen_range(-0.1..0.1)).collect())
+            .collect();
+            
         let bias = vec![0.0; output_size];
+        
+        // Initialize gradients as 0.0
         let grad_weights = vec![vec![0.0; input_size]; output_size];
         let grad_bias = vec![0.0; output_size];
         let cached_input = vec![];
@@ -58,17 +67,16 @@ impl Linear {
     pub fn update(&mut self, optimizer: &mut SGD) {
         for i in 0..self.output_size {
             for j in 0..self.input_size {
-                self.weights[i][j] -= optimizer.learning_rate * self.grad_weights[i][j]; // Update weights
+                self.weights[i][j] -= optimizer.learning_rate * self.grad_weights[i][j];
+                self.grad_weights[i][j] = 0.0;
             }
-            self.bias[i] -= optimizer.learning_rate * self.grad_bias[i]; // Update biases
+            self.bias[i] -= optimizer.learning_rate * self.grad_bias[i];
+            self.grad_bias[i] = 0.0;
         }
     }
 }
 
-
-// ReLU Layer (implementing forward and backward)
-// ReLU Layer (implementing forward and backward)
-
+#[derive(Serialize, Deserialize)]
 pub struct ReLU;
 
 impl ReLU {
@@ -83,10 +91,7 @@ impl ReLU {
     }
 }
 
-
-// Softmax Layer (implementing forward and backward)
-// Softmax Layer (implementing forward and backward)
-
+#[derive(Serialize, Deserialize)]
 pub struct Softmax;
 
 impl Softmax {

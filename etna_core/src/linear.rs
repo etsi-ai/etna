@@ -49,9 +49,11 @@ impl Linear {
     pub fn update(&mut self, optimizer: &mut SGD) {
         for i in 0..self.output_size {
             for j in 0..self.input_size {
-                self.weights[i][j] -= optimizer.learning_rate * self.grad_weights[i][j]; // Update weights
+                self.weights[i][j] -= optimizer.learning_rate * self.grad_weights[i][j];
+                self.grad_weights[i][j] = 0.0;
             }
-            self.bias[i] -= optimizer.learning_rate * self.grad_bias[i]; // Update biases
+            self.bias[i] -= optimizer.learning_rate * self.grad_bias[i];
+            self.grad_bias[i] = 0.0;
         }
     }
 }

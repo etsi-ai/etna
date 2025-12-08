@@ -2,13 +2,17 @@
 use crate::layers::{Linear, ReLU, Softmax};
 use crate::loss_function::{cross_entropy, mse};
 use crate::optimizer::SGD;
+use serde::{Serialize, Deserialize};
+use std::fs::File;
+use std::io::Write;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum TaskType {
     Classification,
     Regression,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct SimpleNN {
     linear1: Linear,
     relu: ReLU,
@@ -55,8 +59,9 @@ impl SimpleNN {
         output
     }
 
-    pub fn train(&mut self, x: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>, epochs: usize, lr: f32) {
+    pub fn train(&mut self, x: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>, epochs: usize, lr: f32) -> Vec<f32> {
         let mut optimizer = SGD::new(lr);
+        let mut loss_history = Vec::new(); // Create list
 
         for epoch in 0..epochs {
             let preds = self.forward(x);
@@ -85,10 +90,13 @@ impl SimpleNN {
             self.linear1.update(&mut optimizer);
             self.linear2.update(&mut optimizer);
 
+            loss_history.push(loss); // Store loss
+
             if epoch % 10 == 0 {
                 println!("Epoch {}/{} - Loss: {:.4}", epoch, epochs, loss);
             }
         }
+        loss_history // Return list
     }
 
     pub fn predict(&mut self, x: &Vec<Vec<f32>>) -> Vec<f32> {
@@ -110,5 +118,12 @@ impl SimpleNN {
                 output.iter().map(|row| row[0]).collect()
             }
         }
+    }
+
+    pub fn save(&self, path: &str) -> std::io::Result<()> {
+        let serialized = serde_json::to_string(self)?; // Convert struct to JSON string
+        let mut file = File::create(path)?;
+        file.write_all(serialized.as_bytes())?;
+        Ok(())
     }
 }
