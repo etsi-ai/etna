@@ -1,5 +1,7 @@
 #  User-facing API (Classifier, Regression)
 
+import mlflow
+import os
 from .utils import load_data
 from .preprocessing import Preprocessor
 from . import _etna_rust 
@@ -18,6 +20,7 @@ class Model:
         self.file_path = file_path
         self.target = target
         self.df = load_data(file_path)
+        self.loss_history = [] # Store loss history
         
         # 1. Determine Task Type
         if task_type:
@@ -56,7 +59,7 @@ class Model:
         self.rust_model = _etna_rust.EtnaModel(input_dim, hidden_dim, output_dim, self.task_code)
         
         print("🔥 Training started...")
-        self.rust_model.train(X, y, epochs, lr)
+        self.loss_history = self.rust_model.train(X, y, epochs, lr)
         print("✅ Training complete!")
 
     def predict(self, data_path=None):
@@ -80,3 +83,36 @@ class Model:
             # Reverse scaling for regression and return Python floats
             results = [(p * self.preprocessor.target_std) + self.preprocessor.target_mean for p in preds]
             return [float(r) for r in results]
+
+    def save_model(self, path="model_checkpoint.json", run_name="ETNA_Run"):
+        """
+        Saves the model using Rust backend AND tracks it with MLflow.
+        """
+        if self.rust_model is None:
+            raise Exception("Model not trained yet!")
+
+        # 1. Save locally using Rust
+        print(f"Saving model to {path}...")
+        self.rust_model.save(path)
+
+        # 2. Log to MLflow (The "Unified" part)
+        print("Logging to MLflow...")
+        
+        # Point to local storage for simplicity (as he requested)
+        mlflow.set_tracking_uri("http://localhost:5000")
+        mlflow.set_experiment("ETNA_Experiments")
+
+        with mlflow.start_run(run_name=run_name):
+            # Log Parameters
+            mlflow.log_param("task_type", self.task_type)
+            mlflow.log_param("target_column", self.target)
+            
+            print(f"📈 Logging {len(self.loss_history)} metrics points...")
+            for epoch, loss in enumerate(self.loss_history):
+                mlflow.log_metric("loss", loss, step=epoch)
+
+            # Log the Model File (Artifact)
+            mlflow.log_artifact(path)
+
+            print("Model saved & tracked!")
+            print("View at: http://localhost:5000")
