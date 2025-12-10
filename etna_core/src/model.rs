@@ -4,7 +4,7 @@ use crate::loss_function::{cross_entropy, mse};
 use crate::optimizer::SGD;
 use serde::{Serialize, Deserialize};
 use std::fs::File;
-use std::io::Write;
+use std::io::{Write, Read};
 
 #[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum TaskType {
@@ -125,5 +125,13 @@ impl SimpleNN {
         let mut file = File::create(path)?;
         file.write_all(serialized.as_bytes())?;
         Ok(())
+    }
+
+    pub fn load(path: &str) -> std::io::Result<Self> {
+        let mut file = File::open(path)?;
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)?;
+        let model: SimpleNN = serde_json::from_str(&contents)?;
+        Ok(model)
     }
 }

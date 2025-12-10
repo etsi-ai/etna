@@ -57,6 +57,14 @@ impl EtnaModel {
         })?;
         Ok(())
     }
+
+    #[staticmethod]
+    fn load(path: String) -> PyResult<Self> {
+        let inner = SimpleNN::load(&path).map_err(|e| {
+            pyo3::exceptions::PyIOError::new_err(format!("Failed to load model: {}", e))
+        })?;
+        Ok(EtnaModel { inner })
+    }
 }
 
 #[pymodule]

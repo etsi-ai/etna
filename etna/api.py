@@ -116,3 +116,34 @@ class Model:
 
             print("Model saved & tracked!")
             print("View at: http://localhost:5000")
+
+    @classmethod
+    def load(cls, path: str):
+        """
+        Loads a saved model checkpoint.
+        """
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Model file not found: {path}")
+
+        print(f"📂 Loading model from {path}...")
+
+        # 1. Create a raw instance (bypassing __init__)
+        self = cls.__new__(cls)
+        
+        # 2. Load the Rust backend
+        try:
+            self.rust_model = _etna_rust.EtnaModel.load(path)
+        except Exception as e:
+            raise RuntimeError(f"Failed to load Rust backend: {e}")
+
+        # 3. Set placeholder state (since we didn't save preprocessors in this MVP)
+        self.file_path = None
+        self.target = "Unknown (Loaded)"
+        self.loss_history = []
+        
+        # Default assumption to prevent crashes
+        self.task_type = "classification" 
+        self.preprocessor = Preprocessor(self.task_type)
+
+        print("✅ Model loaded successfully!")
+        return self
