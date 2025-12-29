@@ -163,6 +163,14 @@ Please refer to [CONTRIBUTING.md](https://github.com/etsi-ai/etna/blob/main/CONT
 
 ---
 
+## Join the Community
+
+Connect with the **etsi.ai** team and other contributors on our Discord.
+
+[![Discord](https://img.shields.io/badge/Discord-Join%20the%20Server-7289DA?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/invite/VCeY6H72rq)
+
+---
+
 ## License
 
 This project is distributed under the **BSD-2-Clause License**. See the [LICENSE](https://github.com/etsi-ai/etna/blob/main/LICENSE) for details.
