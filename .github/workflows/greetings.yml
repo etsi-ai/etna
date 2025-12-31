@@ -21,20 +21,19 @@ jobs:
             const { owner, repo } = context.repo;
             const payload = context.payload;
             const issue_number = context.issue.number;
-            const sender = payload.sender.login;
 
             // 1. Issue Greeting Logic
             if (payload.issue && context.eventName === 'issues') {
-              // Check if the sender is a Maintainer/Owner
-              const authorAssociation = payload.issue.author_association;
-              const isMaintainer = ['OWNER', 'MEMBER', 'COLLABORATOR'].includes(authorAssociation);
+              const association = payload.issue.author_association;
+              console.log(`Issue opened by: ${payload.sender.login} with association: ${association}`);
+
+              // OWNER, MEMBER, and COLLABORATOR cover all maintainer levels
+              const isMaintainer = association === 'OWNER' || association === 'MEMBER' || association === 'COLLABORATOR';
 
               if (isMaintainer) {
-                // Message specifically for issues raised by you/maintainers
                 const maintainerMsg = "This issue has been opened by a project maintainer and is available for community contribution. Interested contributors should provide a brief overview of their proposed implementation plan and request assignment before beginning work on the task.\nYou may join our community discussions on [Discord](https://discord.gg/VCeY6H72rq) for further updates.";
                 await github.rest.issues.createComment({ owner, repo, issue_number, body: maintainerMsg });
               } else {
-                // Standard welcome for community-raised issues
                 const communityMsg = "Thank you for bringing this to our attention! We appreciate your input and will investigate it as soon as possible.\nYou may join our community discussions on [Discord](https://discord.gg/VCeY6H72rq) for further updates.";
                 await github.rest.issues.createComment({ owner, repo, issue_number, body: communityMsg });
               }
@@ -43,12 +42,11 @@ jobs:
             // 2. Initial PR Acknowledgement
             if (payload.pull_request && payload.action === 'opened') {
               const prMsg = "Thank you for opening this PR! Our automated system is currently verifying the PR requirements.\nInternal Discussion: [Discord](https://discord.gg/VCeY6H72rq)";
-              await github.rest.issues.createComment({ owner, repo, issue_number, body: prMsg });
-              // Note: Reviewers are handled by pr-sync.yml after validation
+              await github.rest.issues.createComment({ owner, repo, issue_number: payload.pull_request.number, body: prMsg });
             }
 
             // 3. Merged PR Acknowledgement
             if (payload.pull_request && payload.action === 'closed' && payload.pull_request.merged) {
               const mergeMsg = "This PR has been successfully merged. We appreciate your effort in improving the library and look forward to your future contributions to the Etsi AI ecosystem.";
-              await github.rest.issues.createComment({ owner, repo, issue_number, body: mergeMsg });
+              await github.rest.issues.createComment({ owner, repo, issue_number: payload.pull_request.number, body: mergeMsg });
             }
