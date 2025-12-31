@@ -1,0 +1,43 @@
+name: "Bug Report"
+description: Report a bug to help improve etna.
+labels: ["type: bug"]
+body:
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: "Bug Description"
+      description: "Provide a clear description of the issue."
+      placeholder: "Describe what happened and what you expected to happen."
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: "Steps to Reproduce"
+      description: "Provide a minimal code snippet or list of steps to trigger the bug."
+      placeholder: |
+        1. Import etna... 
+        2. Initialize layer... 
+        3. Run training...
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: "Proposed Solution (Optional)"
+      description: "How do you propose to solve this?"
+      placeholder: "If you have an idea for a fix, describe it here."
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: "Screenshots or Logs"
+      description: "Attach any relevant images or error logs."
+      placeholder: "Paste error logs or drag-and-drop screenshots here."
+  - type: checkboxes
+    id: assignment-section
+    attributes:
+      label: "Assignment and Program Context"
+      description: "Only fill this out if you intend to work on this issue yourself."
+      options:
+        - label: "I want to be assigned to this issue."
+        - label: "I am contributing through the SWOC program."

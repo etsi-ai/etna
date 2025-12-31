@@ -1,0 +1,43 @@
+name: "Custom Issue"
+description: For general tasks, refactors, or maintenance.
+labels: ["type: task"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: "Issue Description"
+      description: "Describe the task or area needing attention."
+      placeholder: "Describe the refactor, documentation update, or maintenance task."
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: "Proposed Solution"
+      description: "How do you propose to solve this?"
+      placeholder: "Explain your approach to completing this task."
+  - type: checkboxes
+    id: area
+    attributes:
+      label: "Category and Area"
+      options:
+        - label: "Engine (Rust Core / Math)"
+        - label: "Docs (Documentation / Examples)"
+        - label: "API (Python Interface)"
+        - label: "Performance (Optimization)"
+    validations:
+      required: true    
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: "Screenshots or Logs"
+      description: "Attach any relevant images or error logs."
+      placeholder: "Paste any additional context here."
+  - type: checkboxes
+    id: assignment-section
+    attributes:
+      label: "Assignment and Program Context"
+      description: "Only fill this out if you intend to work on this issue yourself."
+      options:
+        - label: "I want to be assigned to this issue."
+        - label: "I am contributing through the SWOC program."

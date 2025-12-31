@@ -1,0 +1,40 @@
+name: "Feature Request"
+description: Suggest a new feature or improvement.
+labels: ["type: feature"]
+body:
+  - type: textarea
+    id: feature-description
+    attributes:
+      label: "Feature Description"
+      description: "What is the new feature or task?"
+      placeholder: "Describe the functionality or layer you want to add."
+    validations:
+      required: true
+  - type: textarea
+    id: justification
+    attributes:
+      label: "Why is this needed?"
+      description: "Explain the benefit or the mathematical improvement."
+      placeholder: "How will this improve the library's performance or utility?"
+    validations:
+      required: true
+  - type: textarea
+    id: implementation-plan
+    attributes:
+      label: "Implementation Plan"
+      description: "Briefly describe how you plan to build this."
+      placeholder: "Outline the technical steps or changes to the Rust/Python code."
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: "Screenshots or Diagrams"
+      description: "Attach any relevant images or diagrams."
+      placeholder: "Paste reference images or diagrams here."
+  - type: checkboxes
+    id: assignment-section
+    attributes:
+      label: "Assignment and Program Context"
+      description: "Only fill this out if you intend to work on this issue yourself."
+      options:
+        - label: "I want to be assigned to this issue."
+        - label: "I am contributing through the SWOC program."

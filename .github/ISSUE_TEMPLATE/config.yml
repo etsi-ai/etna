@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: "Question or Discussion"
+    url: "https://discord.gg/VCeY6H72rq"
+    about: "Discuss ideas on Discord before raising an issue."

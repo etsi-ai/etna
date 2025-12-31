@@ -1,0 +1,98 @@
+name: PR Validation and Label Sync
+
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize]
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+  pull-requests: write
+  contents: read
+
+jobs:
+  sync-logic:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Synchronize Metadata
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { repo, owner } = context.repo;
+            const payload = context.payload;
+            const maintainers = ["debug-soham", "Romit23", "Tithibiswas901", "PriyanshSrivastava0305"];
+            const swocLabel = "SWOC";
+
+            const isPR = !!payload.pull_request;
+            const targetNumber = isPR ? payload.pull_request.number : payload.issue.number;
+            const body = (isPR ? payload.pull_request.body : payload.issue.body) || "";
+
+            // --- 1. SWOC PROGRAM DETECTION ---
+            const swocCheckedString = "- [x] I am contributing through the SWOC program.";
+            
+            if (body.includes(swocCheckedString)) {
+              await github.rest.issues.addLabels({ 
+                owner, 
+                repo, 
+                issue_number: targetNumber, 
+                labels: [swocLabel] 
+              });
+            }
+
+            // --- 2. PULL REQUEST VALIDATION AND SYNC ---
+            if (isPR) {
+              const issueRegex = /Closes:?\s*#(\d+)/i;
+              const issueMatch = body.match(issueRegex);
+              
+              // IF VALIDATION FAILS
+              if (!issueMatch) {
+                const failMsg = "### Manual Action Required!\n\nThis pull request is not yet linked to an issue. Please update the description to include 'Closes: #issue_number' in the appropriate section. This is required to pass validation and initiate metadata synchronization.";
+                await github.rest.issues.createComment({ owner, repo, issue_number: targetNumber, body: failMsg });
+                core.setFailed("Validation failed: No valid issue link detected.");
+                return;
+              }
+
+              // IF VALIDATION PASSES
+              const linkedIssueNumber = parseInt(issueMatch[1], 10);
+              
+              const successMsg = `### Validation Successful!\n\nThis pull request has been verified and linked to issue **#${linkedIssueNumber}**. The system is now synchronizing metadata from the referenced issue. Kindly await maintainer review of your changes.`;
+              
+              await github.rest.issues.createComment({ owner, repo, issue_number: targetNumber, body: successMsg });
+
+              // Dispatch Review Request
+              if (issueMatch) {
+                // Only requests review once validation passes
+                await github.rest.pulls.requestReviewers({
+                  owner, repo, pull_number: targetNumber, reviewers: maintainers
+                });
+              }
+
+              try {
+                const { data: linkedIssue } = await github.rest.issues.get({ owner, repo, issue_number: linkedIssueNumber });
+                
+                // Synchronize Assignees
+                const issueAssignees = linkedIssue.assignees.map(a => a.login);
+                if (issueAssignees.length > 0) {
+                  await github.rest.issues.addAssignees({ 
+                    owner, 
+                    repo, 
+                    issue_number: targetNumber, 
+                    assignees: issueAssignees 
+                  });
+                }
+
+                // Synchronize Labels
+                const labelsToIgnore = ['good first issue', 'status: help wanted', 'swoc'];
+                const labelsToSync = linkedIssue.labels
+                  .map(l => (typeof l === 'string' ? l : l.name))
+                  .filter(name => !labelsToIgnore.includes(name.toLowerCase()));
+
+                if (labelsToSync.length > 0) {
+                  await github.rest.issues.addLabels({ owner, repo, issue_number: targetNumber, labels: labelsToSync });
+                } 
+              } catch (error) {
+                core.setFailed("Synchronization failed: The linked issue metadata is currently inaccessible.");
+              }
+            }
