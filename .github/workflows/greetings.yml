@@ -20,15 +20,22 @@ jobs:
           script: |
             const { owner, repo } = context.repo;
             const payload = context.payload;
-            const issue_number = context.issue.number;
+            
+            // Centralized maintainer list for consistency
+            const maintainers = ["debug-soham", "Romit23", "Tithibiswas901", "PriyanshSrivastava0305", "bruhcode404"];
 
             // 1. Issue Greeting Logic
             if (payload.issue && context.eventName === 'issues') {
+              const issue_number = payload.issue.number;
+              const sender = payload.sender.login;
               const association = payload.issue.author_association;
-              console.log(`Issue opened by: ${payload.sender.login} with association: ${association}`);
+              
+              console.log(`Issue #${issue_number} opened by: ${sender}`);
+              console.log(`Reported Association: ${association}`);
 
-              // OWNER, MEMBER, and COLLABORATOR cover all maintainer levels
-              const isMaintainer = association === 'OWNER' || association === 'MEMBER' || association === 'COLLABORATOR';
+              // Dual check: Is the user in our list OR does GitHub recognize them as a maintainer?
+              const isMaintainer = maintainers.includes(sender) || 
+                                   ['OWNER', 'MEMBER', 'COLLABORATOR'].includes(association);
 
               if (isMaintainer) {
                 const maintainerMsg = "This issue has been opened by a project maintainer and is available for community contribution. Interested contributors should provide a brief overview of their proposed implementation plan and request assignment before beginning work on the task.\nYou may join our community discussions on [Discord](https://discord.gg/VCeY6H72rq) for further updates.";
@@ -41,12 +48,14 @@ jobs:
 
             // 2. Initial PR Acknowledgement
             if (payload.pull_request && payload.action === 'opened') {
+              const pr_number = payload.pull_request.number;
               const prMsg = "Thank you for opening this PR! Our automated system is currently verifying the PR requirements.\nInternal Discussion: [Discord](https://discord.gg/VCeY6H72rq)";
-              await github.rest.issues.createComment({ owner, repo, issue_number: payload.pull_request.number, body: prMsg });
+              await github.rest.issues.createComment({ owner, repo, issue_number: pr_number, body: prMsg });
             }
 
             // 3. Merged PR Acknowledgement
             if (payload.pull_request && payload.action === 'closed' && payload.pull_request.merged) {
+              const pr_number = payload.pull_request.number;
               const mergeMsg = "This PR has been successfully merged. We appreciate your effort in improving the library and look forward to your future contributions to the Etsi AI ecosystem.";
-              await github.rest.issues.createComment({ owner, repo, issue_number: payload.pull_request.number, body: mergeMsg });
+              await github.rest.issues.createComment({ owner, repo, issue_number: pr_number, body: mergeMsg });
             }
