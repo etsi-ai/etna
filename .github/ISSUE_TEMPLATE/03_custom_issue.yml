@@ -1,6 +1,6 @@
 name: "Custom Issue"
 description: For general tasks, refactors, or maintenance.
-labels: ["type: task"]
+labels: ["type: refactor"]
 body:
   - type: textarea
     id: description
@@ -21,10 +21,12 @@ body:
     attributes:
       label: "Category and Area"
       options:
-        - label: "Engine (Rust Core / Math)"
-        - label: "Docs (Documentation / Examples)"
-        - label: "API (Python Interface)"
-        - label: "Performance (Optimization)"
+        - label: "Rust Core"
+        - label: "Documentation / Examples"
+        - label: "Python API"
+        - label: "Performance"
+        - label: "Preprocessing"
+        - label: "Bridge"
     validations:
       required: true    
   - type: textarea
