@@ -22,7 +22,7 @@ jobs:
             const payload = context.payload;
             
             // Centralized maintainer list for consistency
-            const maintainers = ["debug-soham", "Romit23", "Tithibiswas901", "PriyanshSrivastava0305", "bruhcode404"];
+            const maintainers = ["debug-soham", "Romit23", "Tithibiswas901", "PriyanshSrivastava0305"];
 
             // 1. Issue Greeting Logic
             if (payload.issue && context.eventName === 'issues') {
