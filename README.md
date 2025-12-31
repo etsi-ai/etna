@@ -177,4 +177,4 @@ This project is distributed under the **BSD-2-Clause License**. See the [LICENSE
 
 ---
 
-Built with ❤️ by etsi.ai "Making machine learning simple, again."
+> Built with ❤️ by etsi.ai
