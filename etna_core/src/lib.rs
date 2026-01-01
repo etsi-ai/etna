@@ -2,7 +2,7 @@
 
 #![allow(dead_code)]
 
-mod model;
+pub mod model;
 mod layers;
 mod loss_function;
 mod optimizer;

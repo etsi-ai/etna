@@ -7,6 +7,7 @@ from .preprocessing import Preprocessor
 from . import _etna_rust 
 import pandas as pd
 import numpy as np
+from tqdm import tqdm
 
 class Model:
     def __init__(self, file_path: str, target: str, task_type: str = None):
@@ -59,7 +60,13 @@ class Model:
         self.rust_model = _etna_rust.EtnaModel(input_dim, hidden_dim, output_dim, self.task_code)
         
         print("🔥 Training started...")
-        self.loss_history = self.rust_model.train(X, y, epochs, lr)
+        with tqdm(range(epochs), desc="Training", unit="epoch") as pbar:
+            self.loss_history = self.rust_model.train(X, y, epochs, lr)
+            # Update progress bar description with final loss
+            if self.loss_history:
+                final_loss = self.loss_history[-1]
+                pbar.set_description(f"Loss: {final_loss:.4f}")
+                pbar.update(epochs)  # Complete the progress bar
         print("✅ Training complete!")
 
     def predict(self, data_path=None):

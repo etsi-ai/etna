@@ -91,11 +91,8 @@ impl SimpleNN {
             self.linear2.update(&mut optimizer);
 
             loss_history.push(loss); // Store loss
-
-            if epoch % 10 == 0 {
-                println!("Epoch {}/{} - Loss: {:.4}", epoch, epochs, loss);
-            }
         }
+
         loss_history // Return list
     }
 
