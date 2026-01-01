@@ -20,13 +20,23 @@ __author__ = "ETNA Team"
 
 # Import main modules
 from . import metrics
-from . import api
+# from . import api
 from . import preprocessing
 from . import utils
 from . import cli
 
 # --- THIS IS THE KEY FIX ---
-from .api import Model 
+##from .api import Model
+# ---------------------------------------------------------------------
+# Optional Rust-backed API
+# This allows tests to run without building the Rust extension
+# ---------------------------------------------------------------------
+try:
+    from . import api
+    from .api import Model
+except ImportError:
+    api = None
+    Model = None
 # ---------------------------
 
 from .metrics import (
