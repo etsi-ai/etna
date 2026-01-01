@@ -23,7 +23,7 @@ jobs:
             const { repo, owner } = context.repo;
             const payload = context.payload;
             const maintainers = ["debug-soham", "Romit23", "Tithibiswas901", "PriyanshSrivastava0305"];
-            const swocLabel = "SWOC";
+            const swocLabel = "SWoC26";
 
             const isPR = !!payload.pull_request;
             const targetNumber = isPR ? payload.pull_request.number : payload.issue.number;
@@ -84,7 +84,7 @@ jobs:
                 }
 
                 // Synchronize Labels
-                const labelsToIgnore = ['good first issue', 'status: help wanted', 'swoc'];
+                const labelsToIgnore = ['good first issue', 'status: help wanted', 'swoc26'];
                 const labelsToSync = linkedIssue.labels
                   .map(l => (typeof l === 'string' ? l : l.name))
                   .filter(name => !labelsToIgnore.includes(name.toLowerCase()));
