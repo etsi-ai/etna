@@ -64,7 +64,11 @@ impl SimpleNN {
 
         // Create separate optimizer instances for each layer
         // This is critical for Adam, as each layer has different dimensions
-        let mut sgd_optimizer = match optimizer_type {
+        let mut sgd_l1 = match optimizer_type {
+            OptimizerType::SGD => Some(SGD::new(lr)),
+            OptimizerType::Adam => None,
+        };
+        let mut sgd_l2 = match optimizer_type {
             OptimizerType::SGD => Some(SGD::new(lr)),
             OptimizerType::Adam => None,
         };
@@ -104,8 +108,10 @@ impl SimpleNN {
             // Update layers based on optimizer type
             match optimizer_type {
                 OptimizerType::SGD => {
-                    if let Some(ref mut opt) = sgd_optimizer {
+                    if let Some(ref mut opt) = sgd_l1 {
                         self.linear1.update_sgd(opt);
+                    }
+                    if let Some(ref mut opt) = sgd_l2 {
                         self.linear2.update_sgd(opt);
                     }
                 },
@@ -116,7 +122,7 @@ impl SimpleNN {
                     if let Some(ref mut opt) = adam_l2 {
                         self.linear2.update_adam(opt);
                     }
-                },
+                }
             }
 
             loss_history.push(loss); // Store loss
