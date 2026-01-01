@@ -1,7 +1,7 @@
 // Model training/prediction logic
 use crate::layers::{Linear, ReLU, Softmax};
 use crate::loss_function::{cross_entropy, mse};
-use crate::optimizer::SGD;
+use crate::optimizer::{SGD, Adam, OptimizerType};
 use serde::{Serialize, Deserialize};
 use std::fs::File;
 use std::io::{Write, Read};
@@ -59,9 +59,18 @@ impl SimpleNN {
         output
     }
 
-    pub fn train(&mut self, x: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>, epochs: usize, lr: f32) -> Vec<f32> {
-        let mut optimizer = SGD::new(lr);
+    pub fn train(&mut self, x: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>, epochs: usize, lr: f32, optimizer_type: OptimizerType) -> Vec<f32> {
         let mut loss_history = Vec::new(); // Create list
+
+        // Create optimizer based on type
+        let mut sgd_optimizer = match optimizer_type {
+            OptimizerType::SGD => Some(SGD::new(lr)),
+            OptimizerType::Adam => None,
+        };
+        let mut adam_optimizer = match optimizer_type {
+            OptimizerType::SGD => None,
+            OptimizerType::Adam => Some(Adam::new(lr, 0.9, 0.999, 1e-8)),
+        };
 
         for epoch in 0..epochs {
             let preds = self.forward(x);
@@ -87,8 +96,21 @@ impl SimpleNN {
             let grad_relu = ReLU::backward(&grad_linear2, &self.hidden_cache);
             let _grad_linear1 = self.linear1.backward(&grad_relu, &self.input_cache);
 
-            self.linear1.update(&mut optimizer);
-            self.linear2.update(&mut optimizer);
+            // Update layers based on optimizer type
+            match optimizer_type {
+                OptimizerType::SGD => {
+                    if let Some(ref mut opt) = sgd_optimizer {
+                        self.linear1.update_sgd(opt);
+                        self.linear2.update_sgd(opt);
+                    }
+                },
+                OptimizerType::Adam => {
+                    if let Some(ref mut opt) = adam_optimizer {
+                        self.linear1.update_adam(opt);
+                        self.linear2.update_adam(opt);
+                    }
+                },
+            }
 
             loss_history.push(loss); // Store loss
 

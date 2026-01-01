@@ -11,6 +11,7 @@ mod utils;
 use pyo3::prelude::*;
 use pyo3::types::PyList;
 use crate::model::SimpleNN;
+use crate::optimizer::OptimizerType;
 
 /// Helper: Convert Python list to Rust Vec
 fn pylist_to_vec2(pylist: &Bound<'_, PyList>) -> Vec<Vec<f32>> {
@@ -34,12 +35,19 @@ impl EtnaModel {
         }
     }
 
-    fn train(&mut self, x: &Bound<'_, PyList>, y: &Bound<'_, PyList>, epochs: usize, lr: f32) -> PyResult<Vec<f32>> {
+    #[pyo3(signature = (x, y, epochs, lr, optimizer=None))]
+    fn train(&mut self, x: &Bound<'_, PyList>, y: &Bound<'_, PyList>, epochs: usize, lr: f32, optimizer: Option<&str>) -> PyResult<Vec<f32>> {
         let x_vec = pylist_to_vec2(x);
         let y_vec = pylist_to_vec2(y);
         
+        // Determine optimizer type (default to SGD if not specified)
+        let optimizer_type = match optimizer {
+            Some("adam") | Some("Adam") => OptimizerType::Adam,
+            _ => OptimizerType::SGD,
+        };
+        
         // Capture the history returned by Rust
-        let history = self.inner.train(&x_vec, &y_vec, epochs, lr);
+        let history = self.inner.train(&x_vec, &y_vec, epochs, lr, optimizer_type);
         
         // Return it to Python
         Ok(history)

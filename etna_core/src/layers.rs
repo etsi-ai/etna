@@ -2,7 +2,7 @@
 
 
 use rand::Rng;
-use crate::optimizer::SGD;
+use crate::optimizer::{SGD, Adam};
 use serde::{Serialize, Deserialize};
 
 /// Fully connected layer: y = Wx + b
@@ -64,13 +64,29 @@ impl Linear {
         grad_input
     }
 
-    pub fn update(&mut self, optimizer: &mut SGD) {
+    pub fn update_sgd(&mut self, optimizer: &mut SGD) {
         for i in 0..self.output_size {
             for j in 0..self.input_size {
                 self.weights[i][j] -= optimizer.learning_rate * self.grad_weights[i][j];
                 self.grad_weights[i][j] = 0.0;
             }
             self.bias[i] -= optimizer.learning_rate * self.grad_bias[i];
+            self.grad_bias[i] = 0.0;
+        }
+    }
+
+    pub fn update_adam(&mut self, optimizer: &mut Adam) {
+        optimizer.step(
+            &mut self.weights,
+            &self.grad_weights,
+            &mut self.bias,
+            &self.grad_bias,
+        );
+        // Reset gradients after update
+        for i in 0..self.output_size {
+            for j in 0..self.input_size {
+                self.grad_weights[i][j] = 0.0;
+            }
             self.grad_bias[i] = 0.0;
         }
     }

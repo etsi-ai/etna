@@ -27,7 +27,7 @@ class Model:
             # User override
             self.task_type = task_type.lower()
             self.task_code = 1 if self.task_type == "regression" else 0
-            print(f"🔮 User Task: {self.task_type.capitalize()} (Target '{target}')")
+            print(f"[*] User Task: {self.task_type.capitalize()} (Target '{target}')")
         else:
             # Auto-detect
             target_data = self.df[target]
@@ -38,29 +38,42 @@ class Model:
             if not is_numeric or (num_unique < 20 and num_unique < len(self.df) * 0.5):
                 self.task_type = "classification"
                 self.task_code = 0
-                print(f"🔮 Auto-Detected Task: Classification (Target '{target}')")
+                print(f"[*] Auto-Detected Task: Classification (Target '{target}')")
             else:
                 self.task_type = "regression"
                 self.task_code = 1
-                print(f"🔮 Auto-Detected Task: Regression (Target '{target}')")
+                print(f"[*] Auto-Detected Task: Regression (Target '{target}')")
             
         self.preprocessor = Preprocessor(self.task_type)
         self.rust_model = None
 
-    def train(self, epochs=100, lr=0.01):
-        print("⚙️  Preprocessing data...")
+    def train(self, epochs=100, lr=0.01, optimizer='sgd'):
+        """
+        Train the model.
+        Args:
+            epochs: Number of training epochs
+            lr: Learning rate
+            optimizer: 'sgd' or 'adam' (default: 'sgd')
+        """
+        print("[*] Preprocessing data...")
         X, y = self.preprocessor.fit_transform(self.df, self.target)
         
         input_dim = len(X[0])
         hidden_dim = 16 
         output_dim = self.preprocessor.output_dim
         
-        print(f"🚀 Initializing Rust Core [In: {input_dim}, Out: {output_dim}]...")
+        print(f"[*] Initializing Rust Core [In: {input_dim}, Out: {output_dim}]...")
         self.rust_model = _etna_rust.EtnaModel(input_dim, hidden_dim, output_dim, self.task_code)
         
-        print("🔥 Training started...")
-        self.loss_history = self.rust_model.train(X, y, epochs, lr)
-        print("✅ Training complete!")
+        # Normalize optimizer name
+        optimizer_lower = optimizer.lower()
+        if optimizer_lower not in ['sgd', 'adam']:
+            print(f"[!] Unknown optimizer '{optimizer}', defaulting to 'sgd'")
+            optimizer_lower = 'sgd'
+        
+        print(f"[*] Training started with {optimizer_lower.upper()} optimizer...")
+        self.loss_history = self.rust_model.train(X, y, epochs, lr, optimizer_lower)
+        print("[*] Training complete!")
 
     def predict(self, data_path=None):
         if self.rust_model is None:
@@ -71,7 +84,7 @@ class Model:
         else:
             df = self.df.drop(columns=[self.target])
             
-        print("⚙️  Transforming input data...")
+        print("[*] Transforming input data...")
         X_new = self.preprocessor.transform(df)
         preds = self.rust_model.predict(X_new)
         
@@ -95,27 +108,32 @@ class Model:
         print(f"Saving model to {path}...")
         self.rust_model.save(path)
 
-        # 2. Log to MLflow (The "Unified" part)
-        print("Logging to MLflow...")
-        
-        # Point to local storage for simplicity (as he requested)
-        mlflow.set_tracking_uri("http://localhost:5000")
-        mlflow.set_experiment("ETNA_Experiments")
-
-        with mlflow.start_run(run_name=run_name):
-            # Log Parameters
-            mlflow.log_param("task_type", self.task_type)
-            mlflow.log_param("target_column", self.target)
+        # 2. Log to MLflow (The "Unified" part) - optional, don't fail if MLflow is unavailable
+        try:
+            print("Logging to MLflow...")
             
-            print(f"📈 Logging {len(self.loss_history)} metrics points...")
-            for epoch, loss in enumerate(self.loss_history):
-                mlflow.log_metric("loss", loss, step=epoch)
+            # Point to local storage for simplicity (as he requested)
+            mlflow.set_tracking_uri("http://localhost:5000")
+            mlflow.set_experiment("ETNA_Experiments")
 
-            # Log the Model File (Artifact)
-            mlflow.log_artifact(path)
+            with mlflow.start_run(run_name=run_name):
+                # Log Parameters
+                mlflow.log_param("task_type", self.task_type)
+                mlflow.log_param("target_column", self.target)
+                
+                print(f"[*] Logging {len(self.loss_history)} metrics points...")
+                for epoch, loss in enumerate(self.loss_history):
+                    mlflow.log_metric("loss", loss, step=epoch)
 
-            print("Model saved & tracked!")
-            print("View at: http://localhost:5000")
+                # Log the Model File (Artifact)
+                mlflow.log_artifact(path)
+
+                print("Model saved & tracked!")
+                print("View at: http://localhost:5000")
+        except Exception as e:
+            # MLflow is optional - model is already saved locally
+            print(f"[!] MLflow tracking unavailable (model still saved locally): {e}")
+            print("[!] To enable MLflow tracking, start MLflow server: mlflow ui")
 
     @classmethod
     def load(cls, path: str):
@@ -125,7 +143,7 @@ class Model:
         if not os.path.exists(path):
             raise FileNotFoundError(f"Model file not found: {path}")
 
-        print(f"📂 Loading model from {path}...")
+        print(f"[*] Loading model from {path}...")
 
         # 1. Create a raw instance (bypassing __init__)
         self = cls.__new__(cls)
@@ -145,5 +163,5 @@ class Model:
         self.task_type = "classification" 
         self.preprocessor = Preprocessor(self.task_type)
 
-        print("✅ Model loaded successfully!")
+        print("[*] Model loaded successfully!")
         return self
