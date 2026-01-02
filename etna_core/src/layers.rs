@@ -40,13 +40,26 @@ impl Linear {
     }
 
     pub fn forward(&mut self, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
-        self.cached_input = input.clone(); // Cache input for backpropagation
-        input.iter().map(|x| {
-            self.weights.iter()
-                .map(|w| w.iter().zip(x.iter()).map(|(w_val, x_val)| w_val * x_val).sum::<f32>() + self.bias.iter().sum::<f32>())
-                .collect::<Vec<f32>>()
-        }).collect()
+        self.cached_input = input.clone();
+    
+        input
+            .iter()
+            .map(|x| {
+                self.weights
+                    .iter()
+                    .enumerate()
+                    .map(|(i, w)| {
+                        w.iter()
+                            .zip(x.iter())
+                            .map(|(w_val, x_val)| w_val * x_val)
+                            .sum::<f32>()
+                            + self.bias[i]
+                    })
+                    .collect::<Vec<f32>>()
+            })
+            .collect()
     }
+    
 
     pub fn backward(&mut self, grad_output: &Vec<Vec<f32>>, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
         let mut grad_input = vec![vec![0.0; self.input_size]; input.len()];
@@ -157,4 +170,29 @@ impl Softmax {
             let grad = Softmax::backward(&preds, &targets);
             assert_eq!(grad, vec![vec![-0.3, 0.3]]);
 }
+
+        #[test]
+        fn linear_identity_forward() {
+            let mut layer = Linear::new(2, 2);
+
+            layer.weights = vec![
+                vec![1.0, 0.0],
+                vec![0.0, 1.0],
+            ];
+            layer.bias = vec![0.0, 0.0];
+
+            let input = vec![vec![3.0, -2.0]];
+            let output = layer.forward(&input);
+
+            assert_eq!(output, input);
+        }
+
+        #[test]
+        fn relu_forward_test() {
+            let input = vec![vec![-1.0, 0.0, 2.5, -3.2]];
+            let output = ReLU::forward(&input);
+
+            assert_eq!(output, vec![vec![0.0, 0.0, 2.5, 0.0]]);
+        }
+
     }
