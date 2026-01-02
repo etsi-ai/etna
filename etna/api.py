@@ -51,12 +51,12 @@ class Model:
         print("⚙️  Preprocessing data...")
         X, y = self.preprocessor.fit_transform(self.df, self.target)
         
-        input_dim = len(X[0])
-        hidden_dim = 16 
-        output_dim = self.preprocessor.output_dim
+        self.input_dim = len(X[0])
+        self.hidden_dim = 16 
+        self.output_dim = self.preprocessor.output_dim
         
-        print(f"🚀 Initializing Rust Core [In: {input_dim}, Out: {output_dim}]...")
-        self.rust_model = _etna_rust.EtnaModel(input_dim, hidden_dim, output_dim, self.task_code)
+        print(f"🚀 Initializing Rust Core [In: {self.input_dim}, Out: {self.output_dim}]...")
+        self.rust_model = _etna_rust.EtnaModel(self.input_dim, self.hidden_dim, self.output_dim, self.task_code)
         
         print("🔥 Training started...")
         self.loss_history = self.rust_model.train(X, y, epochs, lr)
@@ -83,6 +83,32 @@ class Model:
             # Reverse scaling for regression and return Python floats
             results = [(p * self.preprocessor.target_std) + self.preprocessor.target_mean for p in preds]
             return [float(r) for r in results]
+        
+    def summary(self):
+        print("\n Model Summary")
+        print("=" * 60)
+
+        if self.rust_model is None:
+            print("Model has not been trained yet.")
+            print("Call model.train() before calling summary().")
+            return
+
+        
+        l1_params = (self.input_dim * self.hidden_dim) + self.hidden_dim
+        print(
+            f"Layer 1 (Linear): {self.input_dim} -> {self.hidden_dim} "
+            f"| Params: {l1_params}"
+        )
+
+        l2_params = (self.hidden_dim * self.output_dim) + self.output_dim
+        print(
+            f"Layer 2 (Linear): {self.hidden_dim} -> {self.output_dim} "
+            f"| Params: {l2_params}"
+        )   
+
+        print("=" * 60)
+        total_params = l1_params + l2_params
+        print(f"Total Trainable Params: {total_params}\n")
 
     def save_model(self, path="model_checkpoint.json", run_name="ETNA_Run"):
         """
