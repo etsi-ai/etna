@@ -23,3 +23,50 @@ pub fn mse(preds: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>) -> f32 {
     }
     loss / n
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mse_loss_basic() {
+        // preds = [[2.0]], target = [[1.0]]
+        // (2 - 1)^2 = 1
+        let preds = vec![vec![2.0]];
+        let targets = vec![vec![1.0]];
+
+        let loss = mse(&preds, &targets);
+
+        assert_eq!(loss, 1.0);
+    }
+
+    #[test]
+    fn mse_loss_multiple_values() {
+        // ((2-1)^2 + (4-3)^2) / 1 = 2
+        let preds = vec![vec![2.0, 4.0]];
+        let targets = vec![vec![1.0, 3.0]];
+
+        let loss = mse(&preds, &targets);
+
+        assert_eq!(loss, 2.0);
+    }
+
+    #[test]
+    fn cross_entropy_basic() {
+        // One-hot target: class 0
+        // -ln(0.8)
+        let preds = vec![vec![0.8, 0.2]];
+        let targets = vec![vec![1.0, 0.0]];
+
+        let loss = cross_entropy(&preds, &targets);
+        let expected = -0.8_f32.ln();
+
+        assert!(
+            (loss - expected).abs() < 1e-6,
+            "Expected {}, got {}",
+            expected,
+            loss
+        );
+    }
+}
