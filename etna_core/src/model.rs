@@ -1,5 +1,5 @@
 // Model training/prediction logic
-use crate::layers::{Linear, ReLU, LeakyReLU, Sigmoid, Softmax};
+use crate::layers::{Linear, Activation, Softmax};
 use crate::loss_function::{cross_entropy, mse};
 use crate::optimizer::SGD;
 use serde::{Serialize, Deserialize};
@@ -15,7 +15,7 @@ pub enum TaskType {
 #[derive(Serialize, Deserialize)]
 pub struct SimpleNN {
     linear1: Linear,
-    relu: ReLU,
+    activation: Activation,
     linear2: Linear,
     task_type: TaskType,
     input_cache: Vec<Vec<f32>>,
@@ -25,12 +25,12 @@ pub struct SimpleNN {
 }
 
 impl SimpleNN {
-    pub fn new(input_dim: usize, hidden_dim: usize, output_dim: usize, task_code: usize) -> Self {
+    pub fn new(input_dim: usize, hidden_dim: usize, output_dim: usize, task_code: usize, activation: Activation) -> Self {
         let task_type = if task_code == 1 { TaskType::Regression } else { TaskType::Classification };
         
         Self {
             linear1: Linear::new(input_dim, hidden_dim),
-            relu: ReLU,
+            activation,
             linear2: Linear::new(hidden_dim, output_dim),
             task_type, // 0 = Classification, 1 = Regression
             input_cache: vec![],
@@ -42,7 +42,7 @@ impl SimpleNN {
 
     pub fn forward(&mut self, x: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
         let hidden_pre = self.linear1.forward(x);
-        let hidden_post = ReLU::forward(&hidden_pre);
+        let hidden_post = self.activation.forward(&hidden_pre);
         let logits = self.linear2.forward(&hidden_post);
         
         // Only apply Softmax for Classification
@@ -84,8 +84,8 @@ impl SimpleNN {
             };
 
             let grad_linear2 = self.linear2.backward(&grad_output, &self.hidden_cache);
-            let grad_relu = ReLU::backward(&grad_linear2, &self.hidden_cache);
-            let _grad_linear1 = self.linear1.backward(&grad_relu, &self.input_cache);
+            let grad_activation = self.activation.backward(&grad_linear2, &self.hidden_cache);
+            let _grad_linear1 = self.linear1.backward(&grad_activation, &self.input_cache);
 
             self.linear1.update(&mut optimizer);
             self.linear2.update(&mut optimizer);

@@ -122,81 +122,6 @@ impl Softmax {
     }    
 }
 
-#[cfg(test)]
-
-    mod tests {
-        use super::*;
-    
-        #[test]
-        fn linear_update_applies_gradients() {
-            let mut layer = Linear::new(1, 1);
-            layer.weights = vec![vec![1.0]];
-            layer.bias = vec![0.0];
-
-            layer.grad_weights = vec![vec![0.1]];
-            layer.grad_bias = vec![0.1];
-
-            let mut optimizer = SGD::new(0.1);
-            layer.update(&mut optimizer);
-
-            assert!((layer.weights[0][0] - 0.99).abs() < 1e-6);
-            assert!((layer.bias[0] - (-0.01)).abs() < 1e-6);
-}
-
-    
-        #[test]
-        fn relu_backward_basic() {
-            let input = vec![vec![-1.0, 2.0]];
-            let grad_output = vec![vec![1.0, 1.0]];
-
-            let grad_input = ReLU::backward(&grad_output, &input);
-
-            assert_eq!(grad_input, vec![vec![0.0, 1.0]]);
-}
-    
-        #[test]
-        fn softmax_forward_sums_to_one() {
-            let logits = vec![1.0, 2.0, 3.0];
-            let probs = Softmax::forward(&logits);
-
-            let sum: f32 = probs.iter().sum();
-            assert!((sum - 1.0).abs() < 1e-6);
-        }
-        #[test]
-        fn softmax_backward_basic() {
-            let preds = vec![vec![0.7, 0.3]];
-            let targets = vec![vec![1.0, 0.0]];
-
-            let grad = Softmax::backward(&preds, &targets);
-            assert_eq!(grad, vec![vec![-0.3, 0.3]]);
-}
-
-        #[test]
-        fn linear_identity_forward() {
-            let mut layer = Linear::new(2, 2);
-
-            layer.weights = vec![
-                vec![1.0, 0.0],
-                vec![0.0, 1.0],
-            ];
-            layer.bias = vec![0.0, 0.0];
-
-            let input = vec![vec![3.0, -2.0]];
-            let output = layer.forward(&input);
-
-            assert_eq!(output, input);
-        }
-
-        #[test]
-        fn relu_forward_test() {
-            let input = vec![vec![-1.0, 0.0, 2.5, -3.2]];
-            let output = ReLU::forward(&input);
-
-            assert_eq!(output, vec![vec![0.0, 0.0, 2.5, 0.0]]);
-        }
-
-    }
-
 /// Leaky ReLU activation: max(0.01 * x, x)
 #[derive(Serialize, Deserialize)]
 pub struct LeakyReLU;
@@ -246,8 +171,43 @@ impl Sigmoid {
     }
 }
 
-#[cfg(test)]
+/// Configurable activation function enum
+#[derive(Clone, Copy, Serialize, Deserialize)]
+pub enum Activation {
+    ReLU,
+    LeakyReLU,
+    Sigmoid,
+}
 
+impl Activation {
+    /// Apply forward pass using the selected activation
+    pub fn forward(&self, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        match self {
+            Activation::ReLU => ReLU::forward(input),
+            Activation::LeakyReLU => LeakyReLU::forward(input),
+            Activation::Sigmoid => Sigmoid::forward(input),
+        }
+    }
+
+    /// Apply backward pass using the selected activation
+    /// For Sigmoid, pass the cached output from forward pass
+    pub fn backward(&self, grad_output: &Vec<Vec<f32>>, input_or_output: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        match self {
+            Activation::ReLU => ReLU::backward(grad_output, input_or_output),
+            Activation::LeakyReLU => LeakyReLU::backward(grad_output, input_or_output),
+            Activation::Sigmoid => {
+                // For sigmoid, we need to pass the output, not input
+                // But since the backward is called with hidden_cache which is the output of forward,
+                // we can use it directly
+                Sigmoid::backward(grad_output, input_or_output)
+            },
+        }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
     use super::*;
 
     #[test]
@@ -340,3 +300,55 @@ impl Sigmoid {
         let grad = ReLU::backward(&grad_output, &input);
         assert_eq!(grad, vec![vec![0.0, 0.0, 1.0]]);
     }
+
+    #[test]
+    fn test_activation_enum_relu_forward() {
+        let act = Activation::ReLU;
+        let input = vec![vec![-1.0, 0.0, 1.0]];
+        let output = act.forward(&input);
+        assert_eq!(output, vec![vec![0.0, 0.0, 1.0]]);
+    }
+
+    #[test]
+    fn test_activation_enum_leaky_relu_forward() {
+        let act = Activation::LeakyReLU;
+        let input = vec![vec![-1.0, 0.0, 1.0]];
+        let output = act.forward(&input);
+        assert_eq!(output, vec![vec![-0.01, 0.0, 1.0]]);
+    }
+
+    #[test]
+    fn test_activation_enum_sigmoid_forward() {
+        let act = Activation::Sigmoid;
+        let input = vec![vec![0.0]];
+        let output = act.forward(&input);
+        assert!((output[0][0] - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_activation_enum_relu_backward() {
+        let act = Activation::ReLU;
+        let grad_output = vec![vec![1.0, 1.0, 1.0]];
+        let input = vec![vec![-1.0, 0.0, 1.0]];
+        let grad = act.backward(&grad_output, &input);
+        assert_eq!(grad, vec![vec![0.0, 0.0, 1.0]]);
+    }
+
+    #[test]
+    fn test_activation_enum_leaky_relu_backward() {
+        let act = Activation::LeakyReLU;
+        let grad_output = vec![vec![1.0, 1.0, 1.0]];
+        let input = vec![vec![-1.0, 0.0, 1.0]];
+        let grad = act.backward(&grad_output, &input);
+        assert_eq!(grad, vec![vec![0.01, 0.01, 1.0]]);
+    }
+
+    #[test]
+    fn test_activation_enum_sigmoid_backward() {
+        let act = Activation::Sigmoid;
+        let grad_output = vec![vec![1.0]];
+        let sigmoid_output = vec![vec![0.5]];
+        let grad = act.backward(&grad_output, &sigmoid_output);
+        assert!((grad[0][0] - 0.25).abs() < 1e-6);
+    }
+}
