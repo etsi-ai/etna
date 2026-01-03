@@ -247,7 +247,7 @@ impl Sigmoid {
 }
 
 #[cfg(test)]
-mod tests {
+
     use super::*;
 
     #[test]
@@ -340,4 +340,3 @@ mod tests {
         let grad = ReLU::backward(&grad_output, &input);
         assert_eq!(grad, vec![vec![0.0, 0.0, 1.0]]);
     }
-}
