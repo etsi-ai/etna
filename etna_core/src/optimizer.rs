@@ -27,3 +27,38 @@ impl SGD {
         }
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sgd_updates_weight_correctly() {
+        let optimizer = SGD::new(0.1);
+
+        let mut weights = vec![vec![1.0]];
+        let weight_grads = vec![vec![0.1]];
+
+        let mut bias = vec![0.0];
+        let bias_grads = vec![0.0];
+
+        optimizer.step(
+            &mut weights,
+            &weight_grads,
+            &mut bias,
+            &bias_grads,
+        );
+
+        // Floating point math is slightly dishonest, so use tolerance
+        let expected = 0.99;
+        let actual = weights[0][0];
+
+        assert!(
+            (actual - expected).abs() < 1e-6,
+            "Expected weight to be {}, got {}",
+            expected,
+            actual
+        );
+    }
+}
