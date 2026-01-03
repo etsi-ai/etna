@@ -40,9 +40,4 @@ setup(
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
     keywords="neural-network machine-learning rust python deep-learning",
-    entry_points={
-        'console_scripts': [
-            'etna=etna.cli:main',
-        ],
-    },
 )

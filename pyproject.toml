@@ -27,6 +27,3 @@ dev = [
 module-name = "etna._etna_rust"
 manifest-path = "etna_core/Cargo.toml"
 python-source = "."
-
-[project.scripts]
-etna = "etna.cli:main"

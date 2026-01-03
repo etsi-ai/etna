@@ -62,12 +62,17 @@ impl SimpleNN {
     pub fn train(&mut self, x: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>, epochs: usize, lr: f32, optimizer_type: OptimizerType) -> Vec<f32> {
         let mut loss_history = Vec::new(); // Create list
 
-        // Create optimizer based on type
+        // Create separate optimizer instances for each layer
+        // This is critical for Adam, as each layer has different dimensions
         let mut sgd_optimizer = match optimizer_type {
             OptimizerType::SGD => Some(SGD::new(lr)),
             OptimizerType::Adam => None,
         };
-        let mut adam_optimizer = match optimizer_type {
+        let mut adam_l1 = match optimizer_type {
+            OptimizerType::SGD => None,
+            OptimizerType::Adam => Some(Adam::new(lr, 0.9, 0.999, 1e-8)),
+        };
+        let mut adam_l2 = match optimizer_type {
             OptimizerType::SGD => None,
             OptimizerType::Adam => Some(Adam::new(lr, 0.9, 0.999, 1e-8)),
         };
@@ -105,8 +110,10 @@ impl SimpleNN {
                     }
                 },
                 OptimizerType::Adam => {
-                    if let Some(ref mut opt) = adam_optimizer {
+                    if let Some(ref mut opt) = adam_l1 {
                         self.linear1.update_adam(opt);
+                    }
+                    if let Some(ref mut opt) = adam_l2 {
                         self.linear2.update_adam(opt);
                     }
                 },
