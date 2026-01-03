@@ -65,16 +65,38 @@ def test_titanic_like_dataset_preprocessing():
     with mixed numeric, categorical, and missing values
     without manual preprocessing.
     """
+
     df = pd.DataFrame({
-        "Age": [22, 38, None, 35],
-        "Fare": [7.25, 71.28, 8.05, None],
-        "Sex": ["male", "female", "female", "male"],
-        "Embarked": ["S", "C", "S", None],
-        "Survived": [0, 1, 1, 0]
+        "Age": [22, 38, None, 35],            # numeric with NaN
+        "Fare": [7.25, 71.28, 8.05, None],    # numeric with NaN
+        "Sex": ["male", "female", "female", "male"],  # categorical
+        "Embarked": ["S", "C", "S", None],    # categorical with NaN
+        "Survived": [0, 1, 1, 0]               # target
     })
 
     pre = Preprocessor(task_type="classification")
     X, y = pre.fit_transform(df, target_col="Survived")
+
+    # ---- Basic shape checks ----
+    assert len(X) == 4
+    assert len(y) == 4
+
+    # ---- One-Hot Encoding expands feature space ----
+    # Original features: Age, Fare, Sex, Embarked = 4
+    # After OHE, input_dim must increase
+    assert pre.input_dim > 4
+
+    # ---- Classification output dimension ----
+    assert pre.output_dim == 2  # binary classification
+
+    # ---- NaN handling ----
+    X_np = np.array(X)
+    assert not np.isnan(X_np).any()
+
+    # ---- Stronger check: categorical NaNs handled ----
+    # Ensures "Unknown" category or equivalent was encoded
+    assert pre.input_dim >= 6
+
 
     assert len(X) == 4
     assert pre.input_dim > 2        # expanded due to one-hot encoding
