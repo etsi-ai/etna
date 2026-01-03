@@ -3,32 +3,43 @@ from unittest.mock import MagicMock
 import pandas as pd
 
 # =========================
-# Mock Rust backend
+# Mock Rust backend module
 # =========================
-mock_rust = MagicMock()
-mock_model_instance = MagicMock()
+mock_rust_module = MagicMock()
 
-mock_model_instance.train.return_value = [0.1, 0.05]
+mock_model_instance = MagicMock()
+mock_model_instance.train.return_value = [0.1]
 mock_model_instance.predict.return_value = [0, 1, 0]
 
-mock_rust.EtnaModel.return_value = mock_model_instance
-mock_rust.EtnaModel.load.return_value = mock_model_instance
+# IMPORTANT: simulate Rust writing a model file
+def fake_save(path):
+    with open(path, "w") as f:
+        f.write("mock rust model")
 
-sys.modules["etna._etna_rust"] = mock_rust
+mock_model_instance.save.side_effect = fake_save
+
+mock_rust_module.EtnaModel.return_value = mock_model_instance
+mock_rust_module.EtnaModel.load.return_value = mock_model_instance
+
+sys.modules["etna._etna_rust"] = mock_rust_module
 
 # =========================
-# Mock MLflow (CRITICAL)
+# Mock MLflow
 # =========================
 mock_mlflow = MagicMock()
 mock_mlflow.start_run.return_value.__enter__.return_value = None
 mock_mlflow.start_run.return_value.__exit__.return_value = None
-
+mock_mlflow.__version__ = "0.0.0"
 sys.modules["mlflow"] = mock_mlflow
 
 # =========================
 # Import AFTER mocks
 # =========================
 from etna.api import Model
+import etna.api  # important
+
+# PATCH THE CACHED SYMBOL
+etna.api._etna_rust = mock_rust_module
 
 
 def test_model_save_load_preserves_preprocessing(tmp_path):
