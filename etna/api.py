@@ -55,13 +55,16 @@ class Model:
         # Cached transformed data for persistence-safe prediction
         self._cached_X = None
 
-    def train(self, epochs: int = 100, lr: float = 0.01):
+    def train(self,epochs: int = 100,lr: float = 0.01,early_stopping: bool = False,patience: int = 10,restore_best: bool = True,):
         if _etna_rust is None:
             raise ImportError(
                 "Rust core is not available. Please build the Rust extension "
                 "before calling model.train()."
             )
-
+        best_loss = float("inf")
+        best_epoch = 0
+        epochs_without_improve = 0
+        best_model_path = None
         print("⚙️  Preprocessing data...")
         X, y = self.preprocessor.fit_transform(self.df, self.target)
 
@@ -73,12 +76,51 @@ class Model:
         output_dim = self.preprocessor.output_dim
 
         print(f"🚀 Initializing Rust Core [In: {input_dim}, Out: {output_dim}]...")
+        
+        # Initialize a fresh Rust model for training
         self.rust_model = _etna_rust.EtnaModel(
             input_dim, hidden_dim, output_dim, self.task_code
         )
 
         print("🔥 Training started...")
-        self.loss_history = self.rust_model.train(X, y, epochs, lr)
+        self.loss_history = []
+        current_epoch = 0
+        chunk_size = 1  # train 1 epoch at a time
+
+        while current_epoch < epochs:
+            remaining = epochs - current_epoch
+            run_epochs = min(chunk_size, remaining)
+
+            losses = self.rust_model.train(X, y, run_epochs, lr)
+            self.loss_history.extend(losses)
+
+            current_epoch += run_epochs
+            current_loss = losses[-1]
+
+            if early_stopping:
+                if current_loss < best_loss:
+                    best_loss = current_loss
+                    best_epoch = current_epoch
+                    epochs_without_improve = 0
+
+                    best_model_path = "_best_model_tmp.json"
+                    self.rust_model.save(best_model_path)
+                else:
+                    epochs_without_improve += 1
+
+                if epochs_without_improve >= patience:
+                    print(
+                        f"⏹️ Early stopping at epoch {current_epoch}. "
+                        f"Best loss {best_loss:.6f} at epoch {best_epoch}."
+                    )
+                    break
+        if early_stopping and restore_best and best_model_path is not None:
+            self.rust_model = _etna_rust.EtnaModel.load(best_model_path)
+            try:
+                os.remove(best_model_path)
+            except OSError:
+                pass
+
         print("✅ Training complete!")
 
     def predict(self, data_path: str = None):
