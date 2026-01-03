@@ -122,81 +122,6 @@ impl Softmax {
     }    
 }
 
-#[cfg(test)]
-
-    mod tests {
-        use super::*;
-    
-        #[test]
-        fn linear_update_applies_gradients() {
-            let mut layer = Linear::new(1, 1);
-            layer.weights = vec![vec![1.0]];
-            layer.bias = vec![0.0];
-
-            layer.grad_weights = vec![vec![0.1]];
-            layer.grad_bias = vec![0.1];
-
-            let mut optimizer = SGD::new(0.1);
-            layer.update(&mut optimizer);
-
-            assert!((layer.weights[0][0] - 0.99).abs() < 1e-6);
-            assert!((layer.bias[0] - (-0.01)).abs() < 1e-6);
-}
-
-    
-        #[test]
-        fn relu_backward_basic() {
-            let input = vec![vec![-1.0, 2.0]];
-            let grad_output = vec![vec![1.0, 1.0]];
-
-            let grad_input = ReLU::backward(&grad_output, &input);
-
-            assert_eq!(grad_input, vec![vec![0.0, 1.0]]);
-}
-    
-        #[test]
-        fn softmax_forward_sums_to_one() {
-            let logits = vec![1.0, 2.0, 3.0];
-            let probs = Softmax::forward(&logits);
-
-            let sum: f32 = probs.iter().sum();
-            assert!((sum - 1.0).abs() < 1e-6);
-        }
-        #[test]
-        fn softmax_backward_basic() {
-            let preds = vec![vec![0.7, 0.3]];
-            let targets = vec![vec![1.0, 0.0]];
-
-            let grad = Softmax::backward(&preds, &targets);
-            assert_eq!(grad, vec![vec![-0.3, 0.3]]);
-}
-
-        #[test]
-        fn linear_identity_forward() {
-            let mut layer = Linear::new(2, 2);
-
-            layer.weights = vec![
-                vec![1.0, 0.0],
-                vec![0.0, 1.0],
-            ];
-            layer.bias = vec![0.0, 0.0];
-
-            let input = vec![vec![3.0, -2.0]];
-            let output = layer.forward(&input);
-
-            assert_eq!(output, input);
-        }
-
-        #[test]
-        fn relu_forward_test() {
-            let input = vec![vec![-1.0, 0.0, 2.5, -3.2]];
-            let output = ReLU::forward(&input);
-
-            assert_eq!(output, vec![vec![0.0, 0.0, 2.5, 0.0]]);
-        }
-
-    }
-
 /// Leaky ReLU activation: max(0.01 * x, x)
 #[derive(Serialize, Deserialize)]
 pub struct LeakyReLU;
@@ -282,7 +207,7 @@ impl Activation {
 
 
 #[cfg(test)]
-
+mod tests {
     use super::*;
 
     #[test]
