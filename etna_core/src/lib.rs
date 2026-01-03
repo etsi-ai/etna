@@ -2,7 +2,7 @@
 
 #![allow(dead_code)]
 
-mod model;
+pub mod model;
 mod layers;
 mod loss_function;
 mod optimizer;
@@ -52,6 +52,16 @@ impl EtnaModel {
         
         // Return it to Python
         Ok(history)
+    }
+
+    fn train_one_epoch(&mut self, x: &Bound<'_, PyList>, y: &Bound<'_, PyList>, lr: f32) -> PyResult<f32> {
+        let x_vec = pylist_to_vec2(x);
+        let y_vec = pylist_to_vec2(y);
+
+        // Train for one epoch and return the loss
+        let loss = self.inner.train_one_epoch(&x_vec, &y_vec, lr);
+
+        Ok(loss)
     }
 
     fn predict(&mut self, x: &Bound<'_, PyList>) -> PyResult<Vec<f32>> {

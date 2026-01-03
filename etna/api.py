@@ -5,6 +5,7 @@ import json
 ##import mlflow
 import pandas as pd
 import numpy as np
+from tqdm import tqdm
 
 from .utils import load_data
 from .preprocessing import Preprocessor
@@ -78,7 +79,10 @@ class Model:
         )
 
         print("🔥 Training started...")
-        self.loss_history = self.rust_model.train(X, y, epochs, lr)
+        self.loss_history = []
+        for epoch in tqdm(range(epochs), desc="Training", unit="epoch"):
+            loss = self.rust_model.train_one_epoch(X, y, lr)
+            self.loss_history.append(loss)
         print("✅ Training complete!")
 
     def predict(self, data_path: str = None):
