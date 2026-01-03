@@ -158,6 +158,41 @@ impl Sigmoid {
     }
 }
 
+/// Configurable activation function enum
+#[derive(Clone, Copy, Serialize, Deserialize)]
+pub enum Activation {
+    ReLU,
+    LeakyReLU,
+    Sigmoid,
+}
+
+impl Activation {
+    /// Apply forward pass using the selected activation
+    pub fn forward(&self, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        match self {
+            Activation::ReLU => ReLU::forward(input),
+            Activation::LeakyReLU => LeakyReLU::forward(input),
+            Activation::Sigmoid => Sigmoid::forward(input),
+        }
+    }
+
+    /// Apply backward pass using the selected activation
+    /// For Sigmoid, pass the cached output from forward pass
+    pub fn backward(&self, grad_output: &Vec<Vec<f32>>, input_or_output: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        match self {
+            Activation::ReLU => ReLU::backward(grad_output, input_or_output),
+            Activation::LeakyReLU => LeakyReLU::backward(grad_output, input_or_output),
+            Activation::Sigmoid => {
+                // For sigmoid, we need to pass the output, not input
+                // But since the backward is called with hidden_cache which is the output of forward,
+                // we can use it directly
+                Sigmoid::backward(grad_output, input_or_output)
+            },
+        }
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -251,5 +286,56 @@ mod tests {
         let input = vec![vec![-1.0, 0.0, 1.0]];
         let grad = ReLU::backward(&grad_output, &input);
         assert_eq!(grad, vec![vec![0.0, 0.0, 1.0]]);
+    }
+
+    #[test]
+    fn test_activation_enum_relu_forward() {
+        let act = Activation::ReLU;
+        let input = vec![vec![-1.0, 0.0, 1.0]];
+        let output = act.forward(&input);
+        assert_eq!(output, vec![vec![0.0, 0.0, 1.0]]);
+    }
+
+    #[test]
+    fn test_activation_enum_leaky_relu_forward() {
+        let act = Activation::LeakyReLU;
+        let input = vec![vec![-1.0, 0.0, 1.0]];
+        let output = act.forward(&input);
+        assert_eq!(output, vec![vec![-0.01, 0.0, 1.0]]);
+    }
+
+    #[test]
+    fn test_activation_enum_sigmoid_forward() {
+        let act = Activation::Sigmoid;
+        let input = vec![vec![0.0]];
+        let output = act.forward(&input);
+        assert!((output[0][0] - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_activation_enum_relu_backward() {
+        let act = Activation::ReLU;
+        let grad_output = vec![vec![1.0, 1.0, 1.0]];
+        let input = vec![vec![-1.0, 0.0, 1.0]];
+        let grad = act.backward(&grad_output, &input);
+        assert_eq!(grad, vec![vec![0.0, 0.0, 1.0]]);
+    }
+
+    #[test]
+    fn test_activation_enum_leaky_relu_backward() {
+        let act = Activation::LeakyReLU;
+        let grad_output = vec![vec![1.0, 1.0, 1.0]];
+        let input = vec![vec![-1.0, 0.0, 1.0]];
+        let grad = act.backward(&grad_output, &input);
+        assert_eq!(grad, vec![vec![0.01, 0.01, 1.0]]);
+    }
+
+    #[test]
+    fn test_activation_enum_sigmoid_backward() {
+        let act = Activation::Sigmoid;
+        let grad_output = vec![vec![1.0]];
+        let sigmoid_output = vec![vec![0.5]];
+        let grad = act.backward(&grad_output, &sigmoid_output);
+        assert!((grad[0][0] - 0.25).abs() < 1e-6);
     }
 }
