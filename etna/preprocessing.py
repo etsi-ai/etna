@@ -1,88 +1,120 @@
 # Preprocessing (Scaling, Encoding)
-# Scaling : Min-Max,RobustScaler and so on.
-# Encoding : One-Hot,Categorical..
+# Scaling : StandardScaler
+# Encoding : One-Hot
 
 import numpy as np
 import pandas as pd
 
+
 class Preprocessor:
     def __init__(self, task_type="classification"):
         self.task_type = task_type
+
         self.numeric_means = {}
         self.numeric_stds = {}
-        self.cat_mappings = {} 
+        self.cat_mappings = {}
+
         self.target_mapping = {}
         self.target_mean = 0.0
         self.target_std = 1.0
-        self.output_dim = 1 
+
+        self.input_dim = 0
+        self.output_dim = 1
 
     def fit_transform(self, df: pd.DataFrame, target_col: str):
         X_df = df.drop(columns=[target_col])
         y_series = df[target_col]
-        
+
         self.numeric_cols = X_df.select_dtypes(include=[np.number]).columns.tolist()
+        # identify columns with object or category dtypes ( First point of the issue covered here)
+        # Doc : https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.select_dtypes.html
         self.cat_cols = X_df.select_dtypes(exclude=[np.number]).columns.tolist()
-        
+
         X_processed = []
-        
-        # Numeric: Standard Scaling
+
+        # ---------- Numeric features ----------
         for col in self.numeric_cols:
             vals = X_df[col].fillna(X_df[col].mean()).values
             mean = np.mean(vals)
             std = np.std(vals) + 1e-8
+
             self.numeric_means[col] = mean
             self.numeric_stds[col] = std
-            X_processed.append((vals - mean) / std)
-            
-        # Categorical: Simple Encoding
+
+            X_processed.append(((vals - mean) / std).reshape(-1, 1))
+
+        # ---------- Categorical features (One-Hot) ----------
         for col in self.cat_cols:
             vals = X_df[col].fillna("Unknown").astype(str).values
             unique_vals = np.unique(vals)
+
             mapping = {v: i for i, v in enumerate(unique_vals)}
             self.cat_mappings[col] = mapping
-            encoded = np.array([mapping[v] for v in vals])
-            X_processed.append(encoded / (len(mapping) + 1e-8))
+            
+            # Implemented One-Hot Encoding for these columns - fit phase( Second point of the issue covered here)
+            '''
+            Doc: https://pandas.pydata.org/docs/reference/api/pandas.get_dummies.html
+                 https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.OneHotEncoder.html
+            '''                 
+            one_hot = np.zeros((len(vals), len(mapping)))
+            for i, v in enumerate(vals):
+                one_hot[i, mapping[v]] = 1.0
 
-        # Join features
-        X_final = np.column_stack(X_processed).tolist() if X_processed else []
+            X_processed.append(one_hot)
 
-        # Target Processing
+        # ---------- Final feature matrix ----------
+        # Doc: https://www.tensorflow.org/guide/keras/sequential_model
+        X_final = np.hstack(X_processed) if X_processed else np.empty((len(df), 0))
+        # Ensure the model’s first layer receives the correct input feature dimension (Third point of the issue covered here)
+        self.input_dim = X_final.shape[1]
+
+        # ---------- Target processing ----------
         if self.task_type == "classification":
             unique_targets = y_series.unique()
             self.output_dim = len(unique_targets)
+
             self.target_mapping = {v: i for i, v in enumerate(unique_targets)}
-            y_indices = y_series.map(self.target_mapping).values
-            
-            # One-Hot Encoding
-            y_final = np.zeros((len(y_indices), self.output_dim))
-            y_final[np.arange(len(y_indices)), y_indices] = 1.0
-            y_final = y_final.tolist()
-            
-        else: # Regression
+            y_idx = y_series.map(self.target_mapping).values
+
+            y_final = np.zeros((len(y_idx), self.output_dim))
+            y_final[np.arange(len(y_idx)), y_idx] = 1.0
+
+        else:  # regression
             self.output_dim = 1
             y_vals = y_series.fillna(y_series.mean()).values
+
             self.target_mean = np.mean(y_vals)
             self.target_std = np.std(y_vals) + 1e-8
-            y_scaled = (y_vals - self.target_mean) / self.target_std
-            y_final = [[y] for y in y_scaled]
 
-        return X_final, y_final
+            y_scaled = (y_vals - self.target_mean) / self.target_std
+            y_final = y_scaled.reshape(-1, 1)
+
+        return X_final.tolist(), y_final.tolist()
 
     def transform(self, df: pd.DataFrame):
         X_processed = []
+
         for col in self.numeric_cols:
             vals = df[col].fillna(self.numeric_means[col]).values
-            X_processed.append((vals - self.numeric_means[col]) / self.numeric_stds[col])
+            scaled = (vals - self.numeric_means[col]) / self.numeric_stds[col]
+            X_processed.append(scaled.reshape(-1, 1))
+
         for col in self.cat_cols:
             vals = df[col].fillna("Unknown").astype(str).values
             mapping = self.cat_mappings[col]
-            encoded = np.array([mapping.get(v, 0) for v in vals])
-            X_processed.append(encoded / (len(mapping) + 1e-8))
-        return np.column_stack(X_processed).tolist() if X_processed else []
 
+            # Implemented One-Hot Encoding for these columns - transform phase( Second point of the issue covered here)
+            one_hot = np.zeros((len(vals), len(mapping)))
+            for i, v in enumerate(vals):
+                if v in mapping:
+                    one_hot[i, mapping[v]] = 1.0
+
+            X_processed.append(one_hot)
+
+        X_final = np.hstack(X_processed) if X_processed else np.empty((len(df), 0))
+        return X_final.tolist()
 
     def get_state(self):
-        """Return serializable preprocessor state."""
         return {
             "task_type": self.task_type,
             "numeric_means": self.numeric_means,
@@ -91,13 +123,13 @@ class Preprocessor:
             "target_mapping": self.target_mapping,
             "target_mean": self.target_mean,
             "target_std": self.target_std,
+            "input_dim": self.input_dim,
             "output_dim": self.output_dim,
             "numeric_cols": self.numeric_cols,
             "cat_cols": self.cat_cols,
         }
 
     def set_state(self, state: dict):
-        """Restore preprocessor state."""
         self.task_type = state["task_type"]
         self.numeric_means = state["numeric_means"]
         self.numeric_stds = state["numeric_stds"]
@@ -105,6 +137,7 @@ class Preprocessor:
         self.target_mapping = state["target_mapping"]
         self.target_mean = state["target_mean"]
         self.target_std = state["target_std"]
+        self.input_dim = state["input_dim"]
         self.output_dim = state["output_dim"]
         self.numeric_cols = state["numeric_cols"]
         self.cat_cols = state["cat_cols"]
