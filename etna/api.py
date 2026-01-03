@@ -55,7 +55,7 @@ class Model:
         # Cached transformed data for persistence-safe prediction
         self._cached_X = None
 
-    def train(self, epochs: int = 100, lr: float = 0.01):
+    def train(self, epochs: int = 100, lr: float = 0.01, optimizer: str = 'sgd'):
         if _etna_rust is None:
             raise ImportError(
                 "Rust core is not available. Please build the Rust extension "
