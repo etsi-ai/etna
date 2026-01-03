@@ -1,14 +1,19 @@
 # User-facing API (Classifier, Regression)
 
-import mlflow
 import os
 import json
+##import mlflow
 import pandas as pd
 import numpy as np
 
 from .utils import load_data
 from .preprocessing import Preprocessor
-from . import _etna_rust
+
+# Safe Rust import
+try:
+    from . import _etna_rust
+except ImportError:
+    _etna_rust = None
 
 
 class Model:
@@ -25,7 +30,7 @@ class Model:
         self.df = load_data(file_path)
         self.loss_history = []
 
-        # 1. Determine Task Type
+        # Determine task type
         if task_type:
             self.task_type = task_type.lower()
             self.task_code = 1 if self.task_type == "regression" else 0
@@ -47,14 +52,20 @@ class Model:
         self.preprocessor = Preprocessor(self.task_type)
         self.rust_model = None
 
-        # Cache for persistence-safe prediction
+        # Cached transformed data for persistence-safe prediction
         self._cached_X = None
 
-    def train(self, epochs=100, lr=0.01):
+    def train(self, epochs: int = 100, lr: float = 0.01):
+        if _etna_rust is None:
+            raise ImportError(
+                "Rust core is not available. Please build the Rust extension "
+                "before calling model.train()."
+            )
+
         print("⚙️  Preprocessing data...")
         X, y = self.preprocessor.fit_transform(self.df, self.target)
 
-        # Cache transformed training data (CRITICAL for Issue #18)
+        # Cache transformed training data
         self._cached_X = np.array(X)
 
         input_dim = len(X[0])
@@ -70,22 +81,22 @@ class Model:
         self.loss_history = self.rust_model.train(X, y, epochs, lr)
         print("✅ Training complete!")
 
-    def predict(self, data_path=None):
+    def predict(self, data_path: str = None):
         if self.rust_model is None:
             raise Exception("Model not trained yet! Call .train() first.")
 
-        # Case 1: Explicit CSV provided
+        # Case 1: Predict from new CSV
         if data_path:
             df = load_data(data_path)
             print("⚙️  Transforming input data...")
             X_new = self.preprocessor.transform(df)
 
-        # Case 2: Predict on training data (after load)
+        # Case 2: Predict on cached training data (after load)
         else:
             if self._cached_X is None:
                 raise ValueError(
                     "No data available for prediction. "
-                    "Pass a CSV path to predict(data_path=...)"
+                    "Pass a CSV path to predict(data_path=...)."
                 )
             X_new = self._cached_X
 
@@ -112,23 +123,30 @@ class Model:
         if os.path.dirname(path):
             os.makedirs(os.path.dirname(path), exist_ok=True)
 
-        # 1. Save Rust model
-        print(f"Saving model to {path}...")
+        # Save Rust model
+        print(f"💾 Saving model to {path}...")
         self.rust_model.save(path)
 
-        # 2. Save preprocessor state
+        # Save preprocessor + cached state
         preprocessor_path = path + ".preprocessor.json"
         state = self.preprocessor.get_state()
-
-        # Persist cached transformed X (CRITICAL)
-        state["_cached_X"] = self._cached_X.tolist() if self._cached_X is not None else None
+        state["_cached_X"] = (
+            self._cached_X.tolist() if self._cached_X is not None else None
+        )
         state["_target"] = self.target
 
         with open(preprocessor_path, "w") as f:
             json.dump(state, f)
 
-        # 3. Log to MLflow
-        print("Logging to MLflow...")
+        # Skip MLflow in test environment
+        if os.environ.get("ETNA_DISABLE_MLFLOW") == "1":
+            return
+
+        #Lazy import
+        import mlflow
+        
+        # Log to MLflow
+        print("📊 Logging to MLflow...")
         mlflow.set_tracking_uri("http://localhost:5000")
         mlflow.set_experiment("ETNA_Experiments")
 
@@ -141,17 +159,27 @@ class Model:
                 mlflow.log_metric("loss", loss, step=epoch)
 
             mlflow.log_artifact(path)
+            mlflow.log_artifact(preprocessor_path)
 
-            print("Model saved & tracked!")
-            print("View at: http://localhost:5000")
+        print("✅ Model saved & tracked!")
+        print("🔗 View at: http://localhost:5000")
 
     @classmethod
     def load(cls, path: str):
         """
-        Loads a saved model checkpoint along with its preprocessing state.
+        Loads a saved model checkpoint along with preprocessing state.
         """
+        if _etna_rust is None:
+            raise ImportError(
+                "Rust core is not available. Please build the Rust extension "
+                "before loading a model."
+            )
+
         path = str(path)
         preprocessor_path = path + ".preprocessor.json"
+
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Model file not found: {path}")
 
         if not os.path.exists(preprocessor_path):
             raise FileNotFoundError(
@@ -171,10 +199,11 @@ class Model:
             state = json.load(f)
 
         self.task_type = state["task_type"]
+        self.task_code = 1 if self.task_type == "regression" else 0
+
         self.preprocessor = Preprocessor(self.task_type)
         self.preprocessor.set_state(state)
 
-        # Restore cached transformed data
         cached_X = state.get("_cached_X")
         self._cached_X = np.array(cached_X) if cached_X is not None else None
 
