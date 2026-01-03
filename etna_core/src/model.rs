@@ -96,6 +96,38 @@ impl SimpleNN {
         loss_history // Return list
     }
 
+    pub fn train_one_epoch(&mut self, x: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>, lr: f32) -> f32 {
+        let mut optimizer = SGD::new(lr);
+
+        let preds = self.forward(x);
+
+        let (loss, grad_output) = match self.task_type {
+            TaskType::Classification => {
+                let loss_val = cross_entropy(&preds, y);
+                let grad = Softmax::backward(&preds, y);
+                (loss_val, grad)
+            },
+            TaskType::Regression => {
+                let loss_val = mse(&preds, y);
+                // Gradient of MSE: (pred - target)
+                let grad = preds.iter().zip(y.iter())
+                    .map(|(p_row, y_row)| {
+                        p_row.iter().zip(y_row.iter()).map(|(p, t)| p - t).collect()
+                    }).collect();
+                (loss_val, grad)
+            }
+        };
+
+        let grad_linear2 = self.linear2.backward(&grad_output, &self.hidden_cache);
+        let grad_relu = ReLU::backward(&grad_linear2, &self.hidden_cache);
+        let _grad_linear1 = self.linear1.backward(&grad_relu, &self.input_cache);
+
+        self.linear1.update(&mut optimizer);
+        self.linear2.update(&mut optimizer);
+
+        loss
+    }
+
     pub fn predict(&mut self, x: &Vec<Vec<f32>>) -> Vec<f32> {
         let output = self.forward(x);
         

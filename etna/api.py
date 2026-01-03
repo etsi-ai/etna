@@ -60,13 +60,10 @@ class Model:
         self.rust_model = _etna_rust.EtnaModel(input_dim, hidden_dim, output_dim, self.task_code)
         
         print("🔥 Training started...")
-        with tqdm(range(epochs), desc="Training", unit="epoch") as pbar:
-            self.loss_history = self.rust_model.train(X, y, epochs, lr)
-            # Update progress bar description with final loss
-            if self.loss_history:
-                final_loss = self.loss_history[-1]
-                pbar.set_description(f"Loss: {final_loss:.4f}")
-                pbar.update(epochs)  # Complete the progress bar
+        self.loss_history = []
+        for epoch in tqdm(range(epochs), desc="Training", unit="epoch"):
+            loss = self.rust_model.train_one_epoch(X, y, lr)
+            self.loss_history.append(loss)
         print("✅ Training complete!")
 
     def predict(self, data_path=None):
