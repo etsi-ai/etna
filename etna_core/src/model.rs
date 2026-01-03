@@ -1,5 +1,5 @@
 // Model training/prediction logic
-use crate::layers::{Linear, ReLU, Softmax};
+use crate::layers::{Linear, ReLU, LeakyReLU, Sigmoid, Softmax};
 use crate::loss_function::{cross_entropy, mse};
 use crate::optimizer::SGD;
 use serde::{Serialize, Deserialize};

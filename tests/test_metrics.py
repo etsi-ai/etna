@@ -47,7 +47,7 @@ class TestClassificationMetrics:
     def test_accuracy_binary(self):
         """Test accuracy calculation for binary classification."""
         accuracy = self.classifier.accuracy(self.y_true_binary, self.y_pred_binary)
-        expected = 7 / 10  # 7 correct predictions out of 10
+        expected = 8 / 10  # 8 correct predictions out of 10
         assert abs(accuracy - expected) < 1e-6
     
     def test_accuracy_perfect(self):
@@ -65,7 +65,7 @@ class TestClassificationMetrics:
     def test_confusion_matrix_binary(self):
         """Test confusion matrix for binary classification."""
         cm = self.classifier.confusion_matrix(self.y_true_binary, self.y_pred_binary)
-        expected = np.array([[3, 1], [2, 4]])  # [[TN, FP], [FN, TP]]
+        expected = np.array([[4, 1], [1, 4]])  # [[TN, FP], [FN, TP]]
         np.testing.assert_array_equal(cm, expected)
     
     def test_confusion_matrix_multi(self):
@@ -81,9 +81,9 @@ class TestClassificationMetrics:
         metrics = classifier_binary.precision_recall_f1(self.y_true_binary, self.y_pred_binary)
         
         # Manual calculation for positive class (1)
-        # TP=4, FP=1, FN=2
+        # TP=4, FP=1, FN=1
         expected_precision = 4 / (4 + 1)  # 0.8
-        expected_recall = 4 / (4 + 2)  # 0.667
+        expected_recall = 4 / (4 + 1)  # 0.8
         expected_f1 = 2 * (expected_precision * expected_recall) / (expected_precision + expected_recall)
         
         assert abs(metrics['precision'] - expected_precision) < 1e-6

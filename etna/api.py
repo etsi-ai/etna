@@ -4,7 +4,11 @@ import mlflow
 import os
 from .utils import load_data
 from .preprocessing import Preprocessor
-from . import _etna_rust 
+try:
+    from . import _etna_rust
+except ImportError:
+    _etna_rust = None
+
 import pandas as pd
 import numpy as np
 
@@ -55,6 +59,12 @@ class Model:
         hidden_dim = 16 
         output_dim = self.preprocessor.output_dim
         
+        if _etna_rust is None:
+            raise ImportError(
+            "Rust core is not available. Please build the Rust extension "
+            "before calling model.train()."
+        )
+
         print(f"🚀 Initializing Rust Core [In: {input_dim}, Out: {output_dim}]...")
         self.rust_model = _etna_rust.EtnaModel(input_dim, hidden_dim, output_dim, self.task_code)
         
@@ -122,6 +132,11 @@ class Model:
         """
         Loads a saved model checkpoint.
         """
+        if _etna_rust is None:
+            raise ImportError(
+                "Rust core is not available. Please build the Rust extension before loading a model."
+        )
+        
         if not os.path.exists(path):
             raise FileNotFoundError(f"Model file not found: {path}")
 
