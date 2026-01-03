@@ -88,7 +88,7 @@ class Model:
         # Case 1: Predict from new CSV
         if data_path:
             df = load_data(data_path)
-            print("⚙️  Transforming input data...")
+            print("Transforming input data...")
             X_new = self.preprocessor.transform(df)
 
         # Case 2: Predict on cached training data (after load)
@@ -124,7 +124,7 @@ class Model:
             os.makedirs(os.path.dirname(path), exist_ok=True)
 
         # Save Rust model
-        print(f"💾 Saving model to {path}...")
+        print(f"Saving model to {path}...")
         self.rust_model.save(path)
 
         # Save preprocessor + cached state
@@ -146,7 +146,7 @@ class Model:
         import mlflow
         
         # Log to MLflow
-        print("📊 Logging to MLflow...")
+        print("Logging to MLflow...")
         mlflow.set_tracking_uri("http://localhost:5000")
         mlflow.set_experiment("ETNA_Experiments")
 
@@ -161,8 +161,8 @@ class Model:
             mlflow.log_artifact(path)
             mlflow.log_artifact(preprocessor_path)
 
-        print("✅ Model saved & tracked!")
-        print("🔗 View at: http://localhost:5000")
+        print("Model saved & tracked!")
+        print("View at: http://localhost:5000")
 
     @classmethod
     def load(cls, path: str):
