@@ -34,12 +34,21 @@ impl EtnaModel {
         }
     }
 
-    fn train(&mut self, x: &Bound<'_, PyList>, y: &Bound<'_, PyList>, epochs: usize, lr: f32) -> PyResult<Vec<f32>> {
-        let x_vec = pylist_to_vec2(x);
+    fn train(
+    &mut self,
+    x: &Bound<'_, PyList>,
+    y: &Bound<'_, PyList>,
+    epochs: usize,
+    lr: f32,
+    batch_size: Option<usize>,
+) -> PyResult<Vec<f32>> {
+         let x_vec = pylist_to_vec2(x);
         let y_vec = pylist_to_vec2(y);
         
         // Capture the history returned by Rust
-        let history = self.inner.train(&x_vec, &y_vec, epochs, lr);
+        let bs = batch_size.unwrap_or(32);
+
+        let history = self.inner.train(&x_vec, &y_vec, epochs, lr, bs);
         
         // Return it to Python
         Ok(history)
