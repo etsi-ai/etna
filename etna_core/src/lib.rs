@@ -10,10 +10,12 @@ mod utils;
 
 use pyo3::prelude::*;
 use pyo3::types::PyList;
+
 use crate::model::SimpleNN;
 use crate::layers::Activation;
+use crate::optimizer::OptimizerType;
 
-/// Helper: Convert Python list to Rust Vec
+/// Helper: Convert Python list to Rust Vec<Vec<f32>>
 fn pylist_to_vec2(pylist: &Bound<'_, PyList>) -> Vec<Vec<f32>> {
     pylist.iter()
         .map(|item| item.extract::<Vec<f32>>().expect("Expected list of floats"))
@@ -30,41 +32,55 @@ struct EtnaModel {
 impl EtnaModel {
     #[new]
     #[pyo3(signature = (input_dim, hidden_dim, output_dim, task_type, activation=None))]
-    fn new(input_dim: usize, hidden_dim: usize, output_dim: usize, task_type: usize, activation: Option<String>) -> Self {
-        // Parse activation string, default to ReLU
+    fn new(
+        input_dim: usize,
+        hidden_dim: usize,
+        output_dim: usize,
+        task_type: usize,
+        activation: Option<String>,
+    ) -> Self {
+        // Parse activation string (default: ReLU)
         let act = match activation.as_deref().unwrap_or("relu") {
             "leaky_relu" => Activation::LeakyReLU,
             "sigmoid" => Activation::Sigmoid,
             _ => Activation::ReLU,
         };
-        
+
         EtnaModel {
             inner: SimpleNN::new(input_dim, hidden_dim, output_dim, task_type, act),
         }
     }
 
-    fn train(&mut self, x: &Bound<'_, PyList>, y: &Bound<'_, PyList>, epochs: usize, lr: f32) -> PyResult<Vec<f32>> {
+    #[pyo3(signature = (x, y, epochs, lr, optimizer=None))]
+    fn train(
+        &mut self,
+        x: &Bound<'_, PyList>,
+        y: &Bound<'_, PyList>,
+        epochs: usize,
+        lr: f32,
+        optimizer: Option<&str>,
+    ) -> PyResult<Vec<f32>> {
         let x_vec = pylist_to_vec2(x);
         let y_vec = pylist_to_vec2(y);
-        
-        // Capture the history returned by Rust
-        let history = self.inner.train(&x_vec, &y_vec, epochs, lr);
-        
-        // Return it to Python
+
+        let optimizer_type = match optimizer {
+            Some("adam") | Some("Adam") => OptimizerType::Adam,
+            _ => OptimizerType::SGD,
+        };
+
+        let history = self.inner.train(&x_vec, &y_vec, epochs, lr, optimizer_type);
         Ok(history)
     }
 
     fn predict(&mut self, x: &Bound<'_, PyList>) -> PyResult<Vec<f32>> {
         let x_vec = pylist_to_vec2(x);
-        let preds = self.inner.predict(&x_vec);
-        Ok(preds)
+        Ok(self.inner.predict(&x_vec))
     }
 
     fn save(&self, path: String) -> PyResult<()> {
         self.inner.save(&path).map_err(|e| {
             pyo3::exceptions::PyIOError::new_err(format!("Failed to save model: {}", e))
-        })?;
-        Ok(())
+        })
     }
 
     #[staticmethod]
@@ -72,7 +88,7 @@ impl EtnaModel {
         let inner = SimpleNN::load(&path).map_err(|e| {
             pyo3::exceptions::PyIOError::new_err(format!("Failed to load model: {}", e))
         })?;
-        Ok(EtnaModel { inner })
+        Ok(Self { inner })
     }
 }
 

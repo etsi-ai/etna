@@ -34,7 +34,7 @@ class Model:
         if task_type:
             self.task_type = task_type.lower()
             self.task_code = 1 if self.task_type == "regression" else 0
-            print(f"🔮 User Task: {self.task_type.capitalize()} (Target '{target}')")
+            print(f"[*] User Task: {self.task_type.capitalize()} (Target '{target}')")
         else:
             target_data = self.df[target]
             is_numeric = pd.api.types.is_numeric_dtype(target_data)
@@ -43,7 +43,7 @@ class Model:
             if not is_numeric or (num_unique < 20 and num_unique < len(self.df) * 0.5):
                 self.task_type = "classification"
                 self.task_code = 0
-                print(f"🔮 Auto-Detected Task: Classification (Target '{target}')")
+                print(f"[*] Auto-Detected Task: Classification (Target '{target}')")
             else:
                 self.task_type = "regression"
                 self.task_code = 1
@@ -55,7 +55,7 @@ class Model:
         # Cached transformed data for persistence-safe prediction
         self._cached_X = None
 
-    def train(self, epochs: int = 100, lr: float = 0.01):
+    def train(self, epochs: int = 100, lr: float = 0.01, optimizer: str = 'sgd'):
         if _etna_rust is None:
             raise ImportError(
                 "Rust core is not available. Please build the Rust extension "
