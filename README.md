@@ -72,7 +72,7 @@ Etna uses `maturin` to build the Rust extensions.
 3.  **Install dependencies & build**
     ```bash
     # Install build tools
-    pip install maturin numpy pandas mlflow jupyter
+    pip install maturin numpy pandas mlflow jupyter pytest
     
     # Build and install locally
     maturin develop --release

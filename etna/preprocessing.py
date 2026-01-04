@@ -79,3 +79,32 @@ class Preprocessor:
             encoded = np.array([mapping.get(v, 0) for v in vals])
             X_processed.append(encoded / (len(mapping) + 1e-8))
         return np.column_stack(X_processed).tolist() if X_processed else []
+
+
+    def get_state(self):
+        """Return serializable preprocessor state."""
+        return {
+            "task_type": self.task_type,
+            "numeric_means": self.numeric_means,
+            "numeric_stds": self.numeric_stds,
+            "cat_mappings": self.cat_mappings,
+            "target_mapping": self.target_mapping,
+            "target_mean": self.target_mean,
+            "target_std": self.target_std,
+            "output_dim": self.output_dim,
+            "numeric_cols": self.numeric_cols,
+            "cat_cols": self.cat_cols,
+        }
+
+    def set_state(self, state: dict):
+        """Restore preprocessor state."""
+        self.task_type = state["task_type"]
+        self.numeric_means = state["numeric_means"]
+        self.numeric_stds = state["numeric_stds"]
+        self.cat_mappings = state["cat_mappings"]
+        self.target_mapping = state["target_mapping"]
+        self.target_mean = state["target_mean"]
+        self.target_std = state["target_std"]
+        self.output_dim = state["output_dim"]
+        self.numeric_cols = state["numeric_cols"]
+        self.cat_cols = state["cat_cols"]
