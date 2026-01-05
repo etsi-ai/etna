@@ -41,7 +41,11 @@ jobs:
         pip install -r requirements.txt
 
     - name: Build Core
-      run: maturin develop
+      run: |
+        python -m venv .venv
+        source .venv/bin/activate 
+        maturin develop
+
     
     - name: Rust Tests
       run: cargo test
