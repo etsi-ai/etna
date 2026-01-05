@@ -60,10 +60,15 @@ class Model:
         self.rust_model = _etna_rust.EtnaModel(input_dim, hidden_dim, output_dim, self.task_code)
         
         print("🔥 Training started...")
-        self.loss_history = []
-        for epoch in tqdm(range(epochs), desc="Training", unit="epoch"):
-            loss = self.rust_model.train_one_epoch(X, y, lr)
-            self.loss_history.append(loss)
+        with tqdm(total=epochs, desc="Training", unit="epoch") as pbar:
+            def _on_progress(epoch: int, loss: float):
+                pbar.update(1)
+                pbar.set_postfix({"loss": f"{loss:.4f}"})
+
+            history = self.rust_model.train(X, y, epochs, lr, _on_progress)
+
+        # Normalize types to plain Python floats
+        self.loss_history = [float(l) for l in history]
         print("✅ Training complete!")
 
     def predict(self, data_path=None):

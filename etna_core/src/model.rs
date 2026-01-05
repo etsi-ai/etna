@@ -40,6 +40,10 @@ impl SimpleNN {
         }
     }
 
+    pub fn train(&mut self, x: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>, epochs: usize, lr: f32) -> Vec<f32> {
+        self.train_with_progress(x, y, epochs, lr, None)
+    }
+
     pub fn forward(&mut self, x: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
         let hidden_pre = self.linear1.forward(x);
         let hidden_post = ReLU::forward(&hidden_pre);
@@ -59,11 +63,18 @@ impl SimpleNN {
         output
     }
 
-    pub fn train(&mut self, x: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>, epochs: usize, lr: f32) -> Vec<f32> {
+    pub fn train_with_progress(
+        &mut self,
+        x: &Vec<Vec<f32>>,
+        y: &Vec<Vec<f32>>,
+        epochs: usize,
+        lr: f32,
+        mut progress: Option<&mut dyn FnMut(usize, f32)>,
+    ) -> Vec<f32> {
         let mut optimizer = SGD::new(lr);
-        let mut loss_history = Vec::new(); // Create list
+        let mut loss_history = Vec::new();
 
-        for epoch in 0..epochs {
+        for _epoch in 0..epochs {
             let preds = self.forward(x);
             
             let (loss, grad_output) = match self.task_type {
@@ -90,42 +101,14 @@ impl SimpleNN {
             self.linear1.update(&mut optimizer);
             self.linear2.update(&mut optimizer);
 
-            loss_history.push(loss); // Store loss
+            loss_history.push(loss);
+
+            if let Some(cb) = progress.as_mut() {
+                cb(loss_history.len(), loss);
+            }
         }
 
-        loss_history // Return list
-    }
-
-    pub fn train_one_epoch(&mut self, x: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>, lr: f32) -> f32 {
-        let mut optimizer = SGD::new(lr);
-
-        let preds = self.forward(x);
-
-        let (loss, grad_output) = match self.task_type {
-            TaskType::Classification => {
-                let loss_val = cross_entropy(&preds, y);
-                let grad = Softmax::backward(&preds, y);
-                (loss_val, grad)
-            },
-            TaskType::Regression => {
-                let loss_val = mse(&preds, y);
-                // Gradient of MSE: (pred - target)
-                let grad = preds.iter().zip(y.iter())
-                    .map(|(p_row, y_row)| {
-                        p_row.iter().zip(y_row.iter()).map(|(p, t)| p - t).collect()
-                    }).collect();
-                (loss_val, grad)
-            }
-        };
-
-        let grad_linear2 = self.linear2.backward(&grad_output, &self.hidden_cache);
-        let grad_relu = ReLU::backward(&grad_linear2, &self.hidden_cache);
-        let _grad_linear1 = self.linear1.backward(&grad_relu, &self.input_cache);
-
-        self.linear1.update(&mut optimizer);
-        self.linear2.update(&mut optimizer);
-
-        loss
+        loss_history
     }
 
     pub fn predict(&mut self, x: &Vec<Vec<f32>>) -> Vec<f32> {
