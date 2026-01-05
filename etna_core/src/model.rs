@@ -59,8 +59,8 @@ impl SimpleNN {
         output
     }
 
-    pub fn train(&mut self, x: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>, epochs: usize, lr: f32) -> Vec<f32> {
-        let mut optimizer = SGD::new(lr);
+    pub fn train(&mut self, x: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>, epochs: usize, lr: f32, weight_decay: f32) -> Vec<f32> {
+        let mut optimizer = SGD::with_weight_decay(lr, weight_decay);
         let mut loss_history = Vec::new(); // Create list
 
         for epoch in 0..epochs {

@@ -55,7 +55,17 @@ class Model:
         # Cached transformed data for persistence-safe prediction
         self._cached_X = None
 
-    def train(self, epochs: int = 100, lr: float = 0.01):
+    def train(self, epochs: int = 100, lr: float = 0.01, weight_decay: float = 0.0):
+        """
+        Train the model.
+        
+        Args:
+            epochs: Number of training epochs
+            lr: Learning rate
+            weight_decay: L2 regularization coefficient (lambda). Higher values 
+                         lead to smaller weights and help prevent overfitting.
+                         Typical values: 0.0001 to 0.01
+        """
         if _etna_rust is None:
             raise ImportError(
                 "Rust core is not available. Please build the Rust extension "
@@ -65,6 +75,9 @@ class Model:
         print("⚙️  Preprocessing data...")
         X, y = self.preprocessor.fit_transform(self.df, self.target)
         
+        # Cache training data for predict() without arguments
+        self._cached_X = np.array(X)
+        
         self.input_dim = len(X[0])
         self.hidden_dim = 16 
         self.output_dim = self.preprocessor.output_dim
@@ -72,11 +85,24 @@ class Model:
         print(f"🚀 Initializing Rust Core [In: {self.input_dim}, Out: {self.output_dim}]...")
         self.rust_model = _etna_rust.EtnaModel(self.input_dim, self.hidden_dim, self.output_dim, self.task_code)
         
-        print("🔥 Training started...")
-        self.loss_history = self.rust_model.train(X, y, epochs, lr)
+        if weight_decay > 0:
+            print(f"🔥 Training started (L2 regularization: λ={weight_decay})...")
+        else:
+            print("🔥 Training started...")
+        self.loss_history = self.rust_model.train(X, y, epochs, lr, weight_decay)
         print("✅ Training complete!")
 
     def predict(self, data_path: str = None):
+        """
+        Make predictions.
+        
+        Args:
+            data_path: Optional path to CSV file. If not provided, uses the 
+                      training data (useful for evaluating on training set).
+        
+        Returns:
+            List of predictions (class labels for classification, values for regression)
+        """
         if self.rust_model is None:
             raise Exception("Model not trained yet! Call .train() first.")
 
@@ -86,14 +112,15 @@ class Model:
             print("Transforming input data...")
             X_new = self.preprocessor.transform(df)
 
-        # Case 2: Predict on cached training data (after load)
+        # Case 2: Predict on cached training data
         else:
             if self._cached_X is None:
                 raise ValueError(
                     "No data available for prediction. "
                     "Pass a CSV path to predict(data_path=...)."
                 )
-            X_new = self._cached_X
+            # Convert numpy array to list for Rust
+            X_new = self._cached_X.tolist() if isinstance(self._cached_X, np.ndarray) else self._cached_X
 
         preds = self.rust_model.predict(X_new)
 
