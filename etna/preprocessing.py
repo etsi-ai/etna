@@ -12,8 +12,10 @@ class Preprocessor:
 
         self.numeric_means = {}
         self.numeric_stds = {}
+        
         self.cat_mappings = {}
-
+        self.cat_modes = {}          # store mode per categorical column
+        
         self.target_mapping = {}
         self.target_mean = 0.0
         self.target_std = 1.0
@@ -21,16 +23,25 @@ class Preprocessor:
         self.input_dim = 0
         self.output_dim = 1
 
+    # -------------------------------------------------
+    # FIT + TRANSFORM
+    # -------------------------------------------------
+    
+
     def fit_transform(self, df: pd.DataFrame, target_col: str):
         X_df = df.drop(columns=[target_col])
         y_series = df[target_col]
 
+        """
+        identify columns with object or category dtypes ( First point of the issue covered here)
+        Doc : https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.select_dtypes.html
+        """
+        
         self.numeric_cols = X_df.select_dtypes(include=[np.number]).columns.tolist()
-        # identify columns with object or category dtypes ( First point of the issue covered here)
-        # Doc : https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.select_dtypes.html
         self.cat_cols = X_df.select_dtypes(exclude=[np.number]).columns.tolist()
 
         X_processed = []
+        
 
         # ---------- Numeric features ----------
         for col in self.numeric_cols:
@@ -42,11 +53,23 @@ class Preprocessor:
             self.numeric_stds[col] = std
 
             X_processed.append(((vals - mean) / std).reshape(-1, 1))
+            
 
-        # ---------- Categorical features (One-Hot) ----------
+        # ---------- Categorical features (Mode + One-Hot) ----------
         for col in self.cat_cols:
-            vals = X_df[col].fillna("Unknown").astype(str).values
+            series = X_df[col]
+
+            #  MODE IMPUTATION (instead of "Unknown") 
+            mode = series.dropna().mode()
+            mode_val = mode.iloc[0] if not mode.empty else None
+            self.cat_modes[col] = mode_val
+
+
+
+            vals = series.fillna(mode_val).astype(str).values
             unique_vals = np.unique(vals)
+
+
 
             mapping = {v: i for i, v in enumerate(unique_vals)}
             self.cat_mappings[col] = mapping
@@ -63,9 +86,11 @@ class Preprocessor:
             X_processed.append(one_hot)
 
         # ---------- Final feature matrix ----------
-        # Doc: https://www.tensorflow.org/guide/keras/sequential_model
+        """
+        Doc: https://www.tensorflow.org/guide/keras/sequential_model
+             Ensure the model’s first layer receives the correct input feature dimension (Third point of the issue covered here)
+        """
         X_final = np.hstack(X_processed) if X_processed else np.empty((len(df), 0))
-        # Ensure the model’s first layer receives the correct input feature dimension (Third point of the issue covered here)
         self.input_dim = X_final.shape[1]
 
         # ---------- Target processing ----------
@@ -90,6 +115,11 @@ class Preprocessor:
             y_final = y_scaled.reshape(-1, 1)
 
         return X_final.tolist(), y_final.tolist()
+    
+        
+    # -------------------------------------------------
+    # TRANSFORM ONLY (INFERENCE)
+    # -------------------------------------------------
 
     def transform(self, df: pd.DataFrame):
         X_processed = []
@@ -100,8 +130,10 @@ class Preprocessor:
             X_processed.append(scaled.reshape(-1, 1))
 
         for col in self.cat_cols:
-            vals = df[col].fillna("Unknown").astype(str).values
+            mode_val = self.cat_modes[col]
             mapping = self.cat_mappings[col]
+
+            vals = df[col].fillna(mode_val).astype(str).values
 
             # Implemented One-Hot Encoding for these columns - transform phase( Second point of the issue covered here)
             one_hot = np.zeros((len(vals), len(mapping)))
@@ -120,6 +152,7 @@ class Preprocessor:
             "numeric_means": self.numeric_means,
             "numeric_stds": self.numeric_stds,
             "cat_mappings": self.cat_mappings,
+            "cat_modes": self.cat_modes,      # persisted
             "target_mapping": self.target_mapping,
             "target_mean": self.target_mean,
             "target_std": self.target_std,
@@ -134,6 +167,7 @@ class Preprocessor:
         self.numeric_means = state["numeric_means"]
         self.numeric_stds = state["numeric_stds"]
         self.cat_mappings = state["cat_mappings"]
+        self.cat_modes = state["cat_modes"]   # restored
         self.target_mapping = state["target_mapping"]
         self.target_mean = state["target_mean"]
         self.target_std = state["target_std"]
