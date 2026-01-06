@@ -65,6 +65,9 @@ class Model:
         print("⚙️  Preprocessing data...")
         X, y = self.preprocessor.fit_transform(self.df, self.target)
         
+        # Cache training data for predict() without arguments
+        self._cached_X = np.array(X)
+        
         self.input_dim = len(X[0])
         self.hidden_dim = 16 
         self.output_dim = self.preprocessor.output_dim
@@ -77,6 +80,16 @@ class Model:
         print("✅ Training complete!")
 
     def predict(self, data_path: str = None):
+        """
+        Make predictions.
+        
+        Args:
+            data_path: Optional path to CSV file. If not provided, uses the 
+                      training data (useful for evaluating on training set).
+        
+        Returns:
+            List of predictions (class labels for classification, values for regression)
+        """
         if self.rust_model is None:
             raise Exception("Model not trained yet! Call .train() first.")
 
@@ -86,14 +99,15 @@ class Model:
             print("Transforming input data...")
             X_new = self.preprocessor.transform(df)
 
-        # Case 2: Predict on cached training data (after load)
+        # Case 2: Predict on cached training data
         else:
             if self._cached_X is None:
                 raise ValueError(
                     "No data available for prediction. "
                     "Pass a CSV path to predict(data_path=...)."
                 )
-            X_new = self._cached_X
+            # Convert numpy array to list for Rust
+            X_new = self._cached_X.tolist() if isinstance(self._cached_X, np.ndarray) else self._cached_X
 
         preds = self.rust_model.predict(X_new)
 
