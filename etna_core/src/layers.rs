@@ -80,9 +80,13 @@ impl Linear {
     pub fn update(&mut self, optimizer: &mut SGD) {
         for i in 0..self.output_size {
             for j in 0..self.input_size {
-                self.weights[i][j] -= optimizer.learning_rate * self.grad_weights[i][j];
+                // L2 regularization: add lambda * weight to gradient
+                // grad_total = grad_loss + lambda * weight
+                let l2_term = optimizer.weight_decay * self.weights[i][j];
+                self.weights[i][j] -= optimizer.learning_rate * (self.grad_weights[i][j] + l2_term);
                 self.grad_weights[i][j] = 0.0;
             }
+            // Note: We don't apply weight decay to biases (standard practice)
             self.bias[i] -= optimizer.learning_rate * self.grad_bias[i];
             self.grad_bias[i] = 0.0;
         }
