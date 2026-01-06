@@ -5,8 +5,20 @@ use rand::Rng;
 use crate::optimizer::SGD;
 use serde::{Serialize, Deserialize};
 
+/// Weight initialization strategy
+/// - Xavier (Glorot): For layers followed by Sigmoid/Softmax. std = sqrt(2 / (n_in + n_out))
+/// - Kaiming (He): For layers followed by ReLU/LeakyReLU. std = sqrt(2 / n_in)
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum InitStrategy {
+    /// Xavier/Glorot initialization - best for Sigmoid, Tanh, Softmax
+    Xavier,
+    /// Kaiming/He initialization - best for ReLU, LeakyReLU
+    Kaiming,
+    /// Legacy random initialization (-0.1 to 0.1)
+    Legacy,
+}
+
 /// Fully connected layer: y = Wx + b
-// Linear Layer (implementing forward, backward, and update)
 // Linear Layer (implementing forward, backward, and update)
 
 #[derive(Serialize, Deserialize)]
@@ -21,13 +33,50 @@ pub struct Linear {
 }
 
 impl Linear {
+    /// Create a new Linear layer with legacy initialization (backward compatible)
     pub fn new(input_size: usize, output_size: usize) -> Self {
+        Self::new_with_init(input_size, output_size, InitStrategy::Legacy)
+    }
+
+    /// Create a new Linear layer with specified initialization strategy
+    /// 
+    /// # Arguments
+    /// * `input_size` - Number of input features
+    /// * `output_size` - Number of output features  
+    /// * `init` - Initialization strategy (Xavier, Kaiming, or Legacy)
+    pub fn new_with_init(input_size: usize, output_size: usize, init: InitStrategy) -> Self {
         let mut rng = rand::thread_rng();
         
-        // Initialize weights with small random values (e.g., between -0.1 and 0.1)
-        let weights = (0..output_size)
-            .map(|_| (0..input_size).map(|_| rng.gen_range(-0.1..0.1)).collect())
-            .collect();
+        let weights = match init {
+            InitStrategy::Xavier => {
+                // Xavier/Glorot: std = sqrt(2 / (n_in + n_out))
+                let std = (2.0 / (input_size + output_size) as f32).sqrt();
+                (0..output_size)
+                    .map(|_| {
+                        (0..input_size)
+                            .map(|_| Self::sample_normal(&mut rng) * std)
+                            .collect()
+                    })
+                    .collect()
+            },
+            InitStrategy::Kaiming => {
+                // Kaiming/He: std = sqrt(2 / n_in)
+                let std = (2.0 / input_size as f32).sqrt();
+                (0..output_size)
+                    .map(|_| {
+                        (0..input_size)
+                            .map(|_| Self::sample_normal(&mut rng) * std)
+                            .collect()
+                    })
+                    .collect()
+            },
+            InitStrategy::Legacy => {
+                // Legacy: uniform random between -0.1 and 0.1
+                (0..output_size)
+                    .map(|_| (0..input_size).map(|_| rng.gen_range(-0.1..0.1)).collect())
+                    .collect()
+            },
+        };
             
         let bias = vec![0.0; output_size];
         
@@ -37,6 +86,14 @@ impl Linear {
         let cached_input = vec![];
 
         Linear { weights, bias, input_size, output_size, grad_weights, grad_bias, cached_input }
+    }
+
+    /// Sample from standard normal distribution using Box-Muller transform
+    fn sample_normal<R: Rng>(rng: &mut R) -> f32 {
+        // Box-Muller transform for normal distribution
+        let u1: f32 = rng.gen_range(0.0001..1.0); // Avoid log(0)
+        let u2: f32 = rng.gen_range(0.0..1.0);
+        (-2.0 * u1.ln()).sqrt() * (2.0 * std::f32::consts::PI * u2).cos()
     }
 
     pub fn forward(&mut self, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
@@ -207,6 +264,16 @@ impl Activation {
             },
         }
     }
+
+    /// Get the recommended weight initialization strategy for this activation
+    /// - ReLU/LeakyReLU: Kaiming (He) initialization
+    /// - Sigmoid: Xavier (Glorot) initialization
+    pub fn init_strategy(&self) -> InitStrategy {
+        match self {
+            Activation::ReLU | Activation::LeakyReLU => InitStrategy::Kaiming,
+            Activation::Sigmoid => InitStrategy::Xavier,
+        }
+    }
 }
 
 
@@ -354,5 +421,97 @@ mod tests {
         let sigmoid_output = vec![vec![0.5]];
         let grad = act.backward(&grad_output, &sigmoid_output);
         assert!((grad[0][0] - 0.25).abs() < 1e-6);
+    }
+
+    // Weight initialization tests
+    #[test]
+    fn test_kaiming_init_variance() {
+        // Kaiming init: std = sqrt(2/n_in), variance = 2/n_in
+        let input_size = 100;
+        let output_size = 50;
+        let layer = Linear::new_with_init(input_size, output_size, InitStrategy::Kaiming);
+        
+        // Calculate variance of weights
+        let mut sum = 0.0;
+        let mut sum_sq = 0.0;
+        let count = (input_size * output_size) as f32;
+        
+        for row in &layer.weights {
+            for &w in row {
+                sum += w;
+                sum_sq += w * w;
+            }
+        }
+        
+        let mean = sum / count;
+        let variance = sum_sq / count - mean * mean;
+        let expected_variance = 2.0 / input_size as f32;
+        
+        // Allow 50% tolerance due to random sampling
+        assert!(
+            (variance - expected_variance).abs() < expected_variance * 0.5,
+            "Kaiming variance {} should be close to {}", variance, expected_variance
+        );
+    }
+
+    #[test]
+    fn test_xavier_init_variance() {
+        // Xavier init: std = sqrt(2/(n_in + n_out)), variance = 2/(n_in + n_out)
+        let input_size = 100;
+        let output_size = 50;
+        let layer = Linear::new_with_init(input_size, output_size, InitStrategy::Xavier);
+        
+        // Calculate variance of weights
+        let mut sum = 0.0;
+        let mut sum_sq = 0.0;
+        let count = (input_size * output_size) as f32;
+        
+        for row in &layer.weights {
+            for &w in row {
+                sum += w;
+                sum_sq += w * w;
+            }
+        }
+        
+        let mean = sum / count;
+        let variance = sum_sq / count - mean * mean;
+        let expected_variance = 2.0 / (input_size + output_size) as f32;
+        
+        // Allow 50% tolerance due to random sampling
+        assert!(
+            (variance - expected_variance).abs() < expected_variance * 0.5,
+            "Xavier variance {} should be close to {}", variance, expected_variance
+        );
+    }
+
+    #[test]
+    fn test_legacy_init_range() {
+        // Legacy init: uniform between -0.1 and 0.1
+        let layer = Linear::new_with_init(50, 30, InitStrategy::Legacy);
+        
+        for row in &layer.weights {
+            for &w in row {
+                assert!(w >= -0.1 && w <= 0.1, "Legacy weight {} out of range", w);
+            }
+        }
+    }
+
+    #[test]
+    fn test_activation_init_strategy() {
+        assert_eq!(Activation::ReLU.init_strategy(), InitStrategy::Kaiming);
+        assert_eq!(Activation::LeakyReLU.init_strategy(), InitStrategy::Kaiming);
+        assert_eq!(Activation::Sigmoid.init_strategy(), InitStrategy::Xavier);
+    }
+
+    #[test]
+    fn test_linear_new_uses_legacy() {
+        // Linear::new() should use legacy initialization for backward compatibility
+        let layer = Linear::new(10, 5);
+        
+        for row in &layer.weights {
+            for &w in row {
+                assert!(w >= -0.1 && w <= 0.1, "Default init weight {} out of range", w);
+            }
+        }
     }
 }
