@@ -22,7 +22,7 @@ jobs:
           script: |
             const { repo, owner } = context.repo;
             const payload = context.payload;
-            const maintainers = ["debug-soham", "Romit23", "Tithibiswas901", "Aamod007"];
+            const maintainers = ["debug-soham", "Romit23", "Aamod007", "SrishtiSonam", "Satyamgupta2365"];
             const swocLabel = "SWoC26";
 
             const isPR = !!payload.pull_request;
