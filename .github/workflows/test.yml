@@ -41,13 +41,11 @@ jobs:
         pip install -r requirements.txt
 
     - name: Build Core
-      run: |
-        python -m venv .venv
-        source .venv/bin/activate 
-        maturin develop
+      run: maturin develop
 
     
     - name: Rust Tests
+      working-directory: etna_core
       run: cargo test
 
     - name: Python Tests
