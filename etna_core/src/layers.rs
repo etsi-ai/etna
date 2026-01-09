@@ -45,7 +45,7 @@ impl Linear {
     /// * `output_size` - Number of output features  
     /// * `init` - Initialization strategy (Xavier, Kaiming, or Legacy)
     pub fn new_with_init(input_size: usize, output_size: usize, init: InitStrategy) -> Self {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         
         let weights = match init {
             InitStrategy::Xavier => {
@@ -73,7 +73,7 @@ impl Linear {
             InitStrategy::Legacy => {
                 // Legacy: uniform random between -0.1 and 0.1
                 (0..output_size)
-                    .map(|_| (0..input_size).map(|_| rng.gen_range(-0.1..0.1)).collect())
+                    .map(|_| (0..input_size).map(|_| rng.random_range(-0.1..0.1)).collect())
                     .collect()
             },
         };
@@ -91,8 +91,8 @@ impl Linear {
     /// Sample from standard normal distribution using Box-Muller transform
     fn sample_normal<R: Rng>(rng: &mut R) -> f32 {
         // Box-Muller transform for normal distribution
-        let u1: f32 = rng.gen_range(0.0001..1.0); // Avoid log(0)
-        let u2: f32 = rng.gen_range(0.0..1.0);
+        let u1: f32 = rng.random_range(0.0001..1.0); // Avoid log(0)
+        let u2: f32 = rng.random_range(0.0..1.0);
         (-2.0 * u1.ln()).sqrt() * (2.0 * std::f32::consts::PI * u2).cos()
     }
 
