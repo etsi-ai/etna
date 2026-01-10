@@ -123,4 +123,41 @@ mod tests {
         let optimizer = SGD::new(0.1);
         assert!((optimizer.weight_decay - 0.0).abs() < 1e-6);
     }
+
+    #[test]
+    fn test_adam_step_updates() {
+        // Initialize Adam with specific constants for predictable calculation
+        // lr=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8
+        let mut optimizer = Adam::new(0.001, 0.9, 0.999, 1e-8);
+        
+        let mut weights = vec![vec![0.5]]; // Single weight
+        let grad_w = vec![vec![0.1]];      // Constant gradient
+        let mut bias = vec![0.1];          // Single bias
+        let grad_b = vec![0.1];            // Constant gradient
+
+        // Perform one step
+        optimizer.step(&mut weights, &grad_w, &mut bias, &grad_b);
+
+        // 1. Verify time step increment
+        assert_eq!(optimizer.t, 1, "Time step should be 1 after first update");
+
+        // 2. Verify numerical update (Manual Calculation)
+        // t = 1
+        // m = 0.9*0 + 0.1*0.1 = 0.01
+        // v = 0.999*0 + 0.001*(0.1^2) = 0.00001
+        // m_hat = 0.01 / (1 - 0.9) = 0.1
+        // v_hat = 0.00001 / (1 - 0.999) = 0.01
+        // step = lr * m_hat / (sqrt(v_hat) + eps) 
+        // step = 0.001 * 0.1 / (0.1 + 1e-8) ≈ 0.001
+        
+        // Expected Weight: 0.5 - 0.001 = 0.499
+        let expected_weight = 0.499;
+        assert!((weights[0][0] - expected_weight).abs() < 1e-5, 
+            "Weight update incorrect. Got {}, expected approx {}", weights[0][0], expected_weight);
+
+        // Expected Bias: 0.1 - 0.001 = 0.099
+        let expected_bias = 0.099;
+        assert!((bias[0] - expected_bias).abs() < 1e-5, 
+            "Bias update incorrect. Got {}, expected approx {}", bias[0], expected_bias);
+    }
 }

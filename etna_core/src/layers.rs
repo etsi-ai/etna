@@ -38,8 +38,8 @@ impl Linear {
     /// * `output_size` - Number of output features    
     /// * `init` - Initialization strategy (Xavier, Kaiming, or Legacy)
     pub fn new_with_init(input_size: usize, output_size: usize, init: InitStrategy) -> Self {
-        // UPDATED: Use thread_rng() for rand 0.8
-        let mut rng = rand::thread_rng();
+        // UPDATED: Use rand::rng() (replacing thread_rng)
+        let mut rng = rand::rng();
         
         let weights = match init {
             InitStrategy::Xavier => {
@@ -67,8 +67,8 @@ impl Linear {
             InitStrategy::Legacy => {
                 // Legacy: uniform random between -0.1 and 0.1
                 (0..output_size)
-                    // UPDATED: Use gen_range() for rand 0.8
-                    .map(|_| (0..input_size).map(|_| rng.gen_range(-0.1..0.1)).collect())
+                    // UPDATED: Use random_range() (replacing gen_range)
+                    .map(|_| (0..input_size).map(|_| rng.random_range(-0.1..0.1)).collect())
                     .collect()
             },
         };
@@ -86,9 +86,9 @@ impl Linear {
     /// Sample from standard normal distribution using Box-Muller transform
     fn sample_normal<R: Rng>(rng: &mut R) -> f32 {
         // Box-Muller transform for normal distribution
-        // UPDATED: Use gen_range() for rand 0.8
-        let u1: f32 = rng.gen_range(0.0001..1.0); // Avoid log(0)
-        let u2: f32 = rng.gen_range(0.0..1.0);
+        // UPDATED: Use random_range() (replacing gen_range)
+        let u1: f32 = rng.random_range(0.0001..1.0); // Avoid log(0)
+        let u2: f32 = rng.random_range(0.0..1.0);
         (-2.0 * u1.ln()).sqrt() * (2.0 * std::f32::consts::PI * u2).cos()
     }
 
