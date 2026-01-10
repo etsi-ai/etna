@@ -12,6 +12,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyList};
 use pyo3::{Py, Python};
 use crate::model::SimpleNN;
+use crate::layers::Activation;
 
 /// Helper: Convert Python list to Rust Vec
 fn pylist_to_vec2(pylist: &Bound<'_, PyList>) -> Vec<Vec<f32>> {
@@ -29,14 +30,22 @@ struct EtnaModel {
 #[pymethods]
 impl EtnaModel {
     #[new]
-    fn new(input_dim: usize, hidden_dim: usize, output_dim: usize, task_type: usize) -> Self {
+    #[pyo3(signature = (input_dim, hidden_dim, output_dim, task_type, activation=None))]
+    fn new(input_dim: usize, hidden_dim: usize, output_dim: usize, task_type: usize, activation: Option<String>) -> Self {
+        // Parse activation string, default to ReLU
+        let act = match activation.as_deref().unwrap_or("relu") {
+            "leaky_relu" => Activation::LeakyReLU,
+            "sigmoid" => Activation::Sigmoid,
+            _ => Activation::ReLU,
+        };
+        
         EtnaModel {
-            inner: SimpleNN::new(input_dim, hidden_dim, output_dim, task_type),
+            inner: SimpleNN::new(input_dim, hidden_dim, output_dim, task_type, act),
         }
     }
 
-    #[pyo3(signature = (x, y, epochs, lr, progress=None))]
-    fn train(&mut self, x: &Bound<'_, PyList>, y: &Bound<'_, PyList>, epochs: usize, lr: f32, progress: Option<Py<PyAny>>) -> PyResult<Vec<f32>> {
+    #[pyo3(signature = (x, y, epochs, lr, weight_decay=0.0, progress=None))]
+    fn train(&mut self, x: &Bound<'_, PyList>, y: &Bound<'_, PyList>, epochs: usize, lr: f32, weight_decay: f32, progress: Option<Py<PyAny>>) -> PyResult<Vec<f32>> {
         let x_vec = pylist_to_vec2(x);
         let y_vec = pylist_to_vec2(y);
 
@@ -49,11 +58,10 @@ impl EtnaModel {
                 });
             };
 
-            self.inner.train_with_progress(&x_vec, &y_vec, epochs, lr, Some(&mut callback))
+            self.inner.train(&x_vec, &y_vec, epochs, lr, weight_decay, Some(&mut callback))
         } else {
-            self.inner.train(&x_vec, &y_vec, epochs, lr)
+            self.inner.train(&x_vec, &y_vec, epochs, lr, weight_decay, None)
         };
-
         Ok(history)
     }
 

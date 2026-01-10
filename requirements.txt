@@ -1,0 +1,6 @@
+maturin>=1.4
+numpy>=1.22
+pandas>=1.5
+mlflow>=2.0
+pytest>=7.0
+jupyter>=1.0
