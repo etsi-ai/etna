@@ -1,5 +1,5 @@
 // Model training/prediction logic
-use crate::layers::{Linear, ReLU, Softmax};
+use crate::layers::{Linear, Activation, Softmax, InitStrategy};
 use crate::loss_function::{cross_entropy, mse};
 use crate::optimizer::SGD;
 use serde::{Serialize, Deserialize};
@@ -18,7 +18,7 @@ pub enum TaskType {
 #[derive(Serialize, Deserialize)]
 pub struct SimpleNN {
     linear1: Linear,
-    relu: ReLU,
+    activation: Activation,
     linear2: Linear,
     task_type: TaskType,
     input_cache: Vec<Vec<f32>>,
@@ -28,14 +28,21 @@ pub struct SimpleNN {
 }
 
 impl SimpleNN {
-    pub fn new(input_dim: usize, hidden_dim: usize, output_dim: usize, task_code: usize) -> Self {
+    pub fn new(input_dim: usize, hidden_dim: usize, output_dim: usize, task_code: usize, activation: Activation) -> Self {
         let task_type = if task_code == 1 { TaskType::Regression } else { TaskType::Classification };
         
+        // Use appropriate initialization based on activation function:
+        // - linear1 is followed by the activation, so use its recommended init
+        // - linear2 is followed by Softmax (classification) or nothing (regression)
+        //   For Softmax, Xavier is appropriate; for regression output, Xavier is also fine
+        let hidden_init = activation.init_strategy();
+        let output_init = InitStrategy::Xavier;
+        
         Self {
-            linear1: Linear::new(input_dim, hidden_dim),
-            relu: ReLU,
-            linear2: Linear::new(hidden_dim, output_dim),
-            task_type, // 0 = Classification, 1 = Regression
+            linear1: Linear::new_with_init(input_dim, hidden_dim, hidden_init),
+            activation,
+            linear2: Linear::new_with_init(hidden_dim, output_dim, output_init),
+            task_type,
             input_cache: vec![],
             hidden_cache: vec![],
             logits_cache: vec![],
@@ -45,7 +52,7 @@ impl SimpleNN {
 
     pub fn forward(&mut self, x: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
         let hidden_pre = self.linear1.forward(x);
-        let hidden_post = ReLU::forward(&hidden_pre);
+        let hidden_post = self.activation.forward(&hidden_pre);
         let logits = self.linear2.forward(&hidden_post);
         
         // Only apply Softmax for Classification
@@ -62,6 +69,7 @@ impl SimpleNN {
         output
     }
 
+ batch-training
     pub fn train(
     &mut self,
     x: &Vec<Vec<f32>>,
@@ -138,6 +146,43 @@ impl SimpleNN {
                 );
 
 
+
+    pub fn train(&mut self, x: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>, epochs: usize, lr: f32, weight_decay: f32) -> Vec<f32> {
+        let mut optimizer = SGD::with_weight_decay(lr, weight_decay);
+        let mut loss_history = Vec::new(); // Create list
+
+        for epoch in 0..epochs {
+            let preds = self.forward(x);
+            
+            let (loss, grad_output) = match self.task_type {
+                TaskType::Classification => {
+                    let loss_val = cross_entropy(&preds, y);
+                    let grad = Softmax::backward(&preds, y); 
+                    (loss_val, grad)
+                },
+                TaskType::Regression => {
+                    let loss_val = mse(&preds, y);
+                    // Gradient of MSE: (pred - target)
+                    let grad = preds.iter().zip(y.iter())
+                        .map(|(p_row, y_row)| {
+                            p_row.iter().zip(y_row.iter()).map(|(p, t)| p - t).collect()
+                        }).collect();
+                    (loss_val, grad)
+                }
+            };
+
+            let grad_linear2 = self.linear2.backward(&grad_output, &self.hidden_cache);
+            let grad_activation = self.activation.backward(&grad_linear2, &self.hidden_cache);
+            let _grad_linear1 = self.linear1.backward(&grad_activation, &self.input_cache);
+
+            self.linear1.update(&mut optimizer);
+            self.linear2.update(&mut optimizer);
+
+            loss_history.push(loss); // Store loss
+
+            if epoch % 10 == 0 {
+                println!("Epoch {}/{} - Loss: {:.4}", epoch, epochs, loss);
+main
             }
         }
         loss_history // Return list

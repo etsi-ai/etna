@@ -1,13 +1,12 @@
 name: "Custom Issue"
 description: For general tasks, refactors, or maintenance.
-labels: ["type: refactor"]
 body:
   - type: textarea
     id: description
     attributes:
       label: "Issue Description"
       description: "Describe the task or area needing attention."
-      placeholder: "Describe the refactor, documentation update, or maintenance task."
+      placeholder: "Describe the task, documentation update, or maintenance task."
     validations:
       required: true
   - type: textarea
