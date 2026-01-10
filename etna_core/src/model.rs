@@ -1,5 +1,5 @@
 // Model training/prediction logic
-use crate::layers::{Linear, Activation};
+use crate::layers::{Linear, Activation, InitStrategy};
 use crate::softmax::Softmax;
 use crate::loss_function::{cross_entropy, mse};
 use crate::optimizer::{SGD, Adam};
@@ -35,11 +35,18 @@ impl SimpleNN {
     pub fn new(input_dim: usize, hidden_dim: usize, output_dim: usize, task_code: usize, activation: Activation) -> Self {
         let task_type = if task_code == 1 { TaskType::Regression } else { TaskType::Classification };
         
+        // Use appropriate initialization based on activation function:
+        // - linear1 is followed by the activation, so use its recommended init
+        // - linear2 is followed by Softmax (classification) or nothing (regression)
+        //   For Softmax, Xavier is appropriate; for regression output, Xavier is also fine
+        let hidden_init = activation.init_strategy();
+        let output_init = InitStrategy::Xavier;
+        
         Self {
-            linear1: Linear::new(input_dim, hidden_dim),
+            linear1: Linear::new_with_init(input_dim, hidden_dim, hidden_init),
             activation,
-            linear2: Linear::new(hidden_dim, output_dim),
-            task_type, // 0 = Classification, 1 = Regression
+            linear2: Linear::new_with_init(hidden_dim, output_dim, output_init),
+            task_type,
             input_cache: vec![],
             hidden_cache: vec![],
             logits_cache: vec![],

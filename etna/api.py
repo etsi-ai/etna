@@ -63,10 +63,10 @@ class Model:
             epochs: Number of training epochs
             lr: Learning rate
             weight_decay: L2 regularization coefficient (lambda). Higher values
-                         lead to smaller weights and help prevent overfitting.
-                         Typical values: 0.0001 to 0.01
+                          lead to smaller weights and help prevent overfitting.
+                          Typical values: 0.0001 to 0.01
             optimizer: Optimizer to use ('sgd' or 'adam'). Default is 'sgd'.
-                      Adam optimizer provides better convergence with adaptive learning rates.
+                       Adam optimizer provides better convergence with adaptive learning rates.
         """
         if _etna_rust is None:
             raise ImportError(
@@ -76,8 +76,8 @@ class Model:
 
         print("⚙️  Preprocessing data...")
         X, y = self.preprocessor.fit_transform(self.df, self.target)
-
-        # Cache transformed training data
+        
+        # Cache training data for predict() without arguments
         self._cached_X = np.array(X)
 
         self.input_dim = len(X[0])
@@ -109,6 +109,16 @@ class Model:
         print("✅ Training complete!")
 
     def predict(self, data_path: str = None):
+        """
+        Make predictions.
+        
+        Args:
+            data_path: Optional path to CSV file. If not provided, uses the 
+                       training data (useful for evaluating on training set).
+        
+        Returns:
+            List of predictions (class labels for classification, values for regression)
+        """
         if self.rust_model is None:
             raise Exception("Model not trained yet! Call .train() first.")
 
@@ -118,14 +128,15 @@ class Model:
             print("Transforming input data...")
             X_new = self.preprocessor.transform(df)
 
-        # Case 2: Predict on cached training data (after load)
+        # Case 2: Predict on cached training data
         else:
             if self._cached_X is None:
                 raise ValueError(
                     "No data available for prediction. "
                     "Pass a CSV path to predict(data_path=...)."
                 )
-            X_new = self._cached_X
+            # Convert numpy array to list for Rust
+            X_new = self._cached_X.tolist() if isinstance(self._cached_X, np.ndarray) else self._cached_X
 
         preds = self.rust_model.predict(X_new)
 
@@ -138,6 +149,32 @@ class Model:
                 for p in preds
             ]
             return [float(r) for r in results]
+        
+    def summary(self):
+        print("\n Model Summary")
+        print("=" * 60)
+
+        if self.rust_model is None:
+            print("Model has not been trained yet.")
+            print("Call model.train() before calling summary().")
+            return
+
+        
+        l1_params = (self.input_dim * self.hidden_dim) + self.hidden_dim
+        print(
+            f"Layer 1 (Linear): {self.input_dim} -> {self.hidden_dim} "
+            f"| Params: {l1_params}"
+        )
+
+        l2_params = (self.hidden_dim * self.output_dim) + self.output_dim
+        print(
+            f"Layer 2 (Linear): {self.hidden_dim} -> {self.output_dim} "
+            f"| Params: {l2_params}"
+        )   
+
+        print("=" * 60)
+        total_params = l1_params + l2_params
+        print(f"Total Trainable Params: {total_params}\n")
 
     def save_model(self, path="model_checkpoint.json", run_name="ETNA_Run"):
         """

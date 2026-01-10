@@ -1,22 +1,27 @@
 // Optimizers (SGD, Adam)
 
-/// Simple Stochastic Gradient Descent (SGD) optimizer
+/// Simple Stochastic Gradient Descent (SGD) optimizer with optional L2 regularization (weight decay)
+/// 
+/// L2 regularization adds a penalty term to the loss function: L_reg = L + (lambda/2) * ||W||^2
+/// The gradient becomes: grad_W = grad_L + lambda * W
+/// This encourages smaller weights and helps prevent overfitting.
 pub struct SGD {
     pub learning_rate: f32,
-    pub weight_decay: f32,
+    pub weight_decay: f32,  // L2 regularization coefficient (lambda)
 }
 
 impl SGD {
-    pub fn new(lr: f32) -> Self {
-        Self {
-            learning_rate: lr,
-            weight_decay: 0.0,
+    pub fn new(learning_rate: f32) -> Self {
+        SGD { 
+            learning_rate,
+            weight_decay: 0.0,  // Default: no regularization
         }
     }
 
-    pub fn with_weight_decay(lr: f32, weight_decay: f32) -> Self {
-        Self {
-            learning_rate: lr,
+    /// Create SGD optimizer with L2 regularization (weight decay)
+    pub fn with_weight_decay(learning_rate: f32, weight_decay: f32) -> Self {
+        SGD { 
+            learning_rate, 
             weight_decay,
         }
     }

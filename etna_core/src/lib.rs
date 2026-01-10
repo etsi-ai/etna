@@ -64,7 +64,7 @@ impl EtnaModel {
 
         // Capture the history returned by Rust
         let history = self.inner.train(&x_vec, &y_vec, epochs, lr, weight_decay, optimizer_type);
-
+        
         // Return it to Python
         Ok(history)
     }
