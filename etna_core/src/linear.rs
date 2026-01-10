@@ -1,5 +1,5 @@
 // Linear Layer (implementing forward, backward, and update)
-
+#[derive(Clone)]
 pub struct Linear {
     weights: Vec<Vec<f32>>,
     bias: Vec<f32>,

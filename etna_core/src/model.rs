@@ -66,9 +66,13 @@ impl SimpleNN {
         output
     }
 
-    pub fn train(&mut self, x: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>, epochs: usize, lr: f32, weight_decay: f32) -> Vec<f32> {
+    pub fn train(&mut self, x: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>, x_val: Option<&Vec<Vec<f32>>>,  y_val: Option<&Vec<Vec<f32>>>, epochs: usize, lr: f32, weight_decay: f32, early_stopping: bool,  patience: usize) -> Vec<f32> {
         let mut optimizer = SGD::with_weight_decay(lr, weight_decay);
         let mut loss_history = Vec::new(); // Create list
+        let mut best_loss = f32::INFINITY;
+        let mut epochs_without_improve = 0;
+        let mut best_linear1: Option<Linear> = None;
+        let mut best_linear2: Option<Linear> = None;
 
         for epoch in 0..epochs {
             let preds = self.forward(x);
@@ -98,11 +102,51 @@ impl SimpleNN {
             self.linear2.update(&mut optimizer);
 
             loss_history.push(loss); // Store loss
+// ---------- EARLY STOPPING CHECK ----------
+            let monitor_loss = if let (Some(xv), Some(yv)) = (x_val, y_val) {
+                let val_preds = self.forward(xv);
+                match self.task_type {
+                    TaskType::Classification => cross_entropy(&val_preds, yv),
+                    TaskType::Regression => mse(&val_preds, yv),
+                }
+            } else {
+                loss
+            };
+
+            if early_stopping {
+                if monitor_loss < best_loss {
+                    best_loss = monitor_loss;
+                    epochs_without_improve = 0;
+
+                    // 🔥 STORE BEST WEIGHTS IN RAM
+                    best_linear1 = Some(self.linear1.clone());
+                    best_linear2 = Some(self.linear2.clone());
+                } else {
+                    epochs_without_improve += 1;
+                }
+
+                if epochs_without_improve >= patience {
+                    println!(
+                        "Early stopping at epoch {} (best val loss {:.4})",
+                        epoch, best_loss
+                    );
+                    break;
+                }
+            }
+            // ----------------------------------------
+
 
             if epoch % 10 == 0 {
                 println!("Epoch {}/{} - Loss: {:.4}", epoch, epochs, loss);
             }
         }
+        if early_stopping {
+            if let (Some(l1), Some(l2)) = (best_linear1, best_linear2) {
+                self.linear1 = l1;
+                self.linear2 = l2;
+            }
+        }
+
         loss_history // Return list
     }
 
