@@ -47,6 +47,10 @@ impl SimpleNN {
         }
     }
 
+    pub fn train(&mut self, x: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>, epochs: usize, lr: f32) -> Vec<f32> {
+        self.train_with_progress(x, y, epochs, lr, None)
+    }
+
     pub fn forward(&mut self, x: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
         let hidden_pre = self.linear1.forward(x);
         let hidden_post = self.activation.forward(&hidden_pre);
@@ -66,11 +70,18 @@ impl SimpleNN {
         output
     }
 
-    pub fn train(&mut self, x: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>, epochs: usize, lr: f32, weight_decay: f32) -> Vec<f32> {
-        let mut optimizer = SGD::with_weight_decay(lr, weight_decay);
-        let mut loss_history = Vec::new(); // Create list
+    pub fn train_with_progress(
+        &mut self,
+        x: &Vec<Vec<f32>>,
+        y: &Vec<Vec<f32>>,
+        epochs: usize,
+        lr: f32,
+        mut progress: Option<&mut dyn FnMut(usize, f32)>,
+    ) -> Vec<f32> {
+        let mut optimizer = SGD::new(lr);
+        let mut loss_history = Vec::new();
 
-        for epoch in 0..epochs {
+        for _epoch in 0..epochs {
             let preds = self.forward(x);
             
             let (loss, grad_output) = match self.task_type {
@@ -97,13 +108,14 @@ impl SimpleNN {
             self.linear1.update(&mut optimizer);
             self.linear2.update(&mut optimizer);
 
-            loss_history.push(loss); // Store loss
+            loss_history.push(loss);
 
-            if epoch % 10 == 0 {
-                println!("Epoch {}/{} - Loss: {:.4}", epoch, epochs, loss);
+            if let Some(cb) = progress.as_mut() {
+                cb(loss_history.len(), loss);
             }
         }
-        loss_history // Return list
+
+        loss_history
     }
 
     pub fn predict(&mut self, x: &Vec<Vec<f32>>) -> Vec<f32> {

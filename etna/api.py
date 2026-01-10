@@ -5,6 +5,7 @@ import json
 ##import mlflow
 import pandas as pd
 import numpy as np
+from tqdm import tqdm
 
 from .utils import load_data
 from .preprocessing import Preprocessor
@@ -82,6 +83,7 @@ class Model:
         self.hidden_dim = 16 
         self.output_dim = self.preprocessor.output_dim
         
+        
         print(f"🚀 Initializing Rust Core [In: {self.input_dim}, Out: {self.output_dim}]...")
         self.rust_model = _etna_rust.EtnaModel(self.input_dim, self.hidden_dim, self.output_dim, self.task_code)
         
@@ -89,7 +91,16 @@ class Model:
             print(f"🔥 Training started (L2 regularization: λ={weight_decay})...")
         else:
             print("🔥 Training started...")
-        self.loss_history = self.rust_model.train(X, y, epochs, lr, weight_decay)
+        
+        with tqdm(total=epochs, desc="Training", unit="epoch") as pbar:
+            def _on_progress(epoch: int, loss: float):
+                pbar.update(1)
+                pbar.set_postfix({"loss": f"{loss:.4f}"})
+
+            history = self.rust_model.train(X, y, epochs, lr, weight_decay, _on_progress)
+
+        # Normalize types to plain Python floats
+        self.loss_history = [float(l) for l in history]
         print("✅ Training complete!")
 
     def predict(self, data_path: str = None):

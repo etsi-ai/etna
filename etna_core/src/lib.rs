@@ -9,7 +9,8 @@ mod optimizer;
 mod utils; 
 
 use pyo3::prelude::*;
-use pyo3::types::PyList;
+use pyo3::types::{PyAny, PyList};
+use pyo3::{Py, Python};
 use crate::model::SimpleNN;
 use crate::layers::Activation;
 
@@ -43,15 +44,24 @@ impl EtnaModel {
         }
     }
 
-    #[pyo3(signature = (x, y, epochs, lr, weight_decay=0.0))]
-    fn train(&mut self, x: &Bound<'_, PyList>, y: &Bound<'_, PyList>, epochs: usize, lr: f32, weight_decay: f32) -> PyResult<Vec<f32>> {
+    #[pyo3(signature = (x, y, epochs, lr, weight_decay=0.0, progress=None))]
+    fn train(&mut self, x: &Bound<'_, PyList>, y: &Bound<'_, PyList>, epochs: usize, lr: f32, weight_decay: f32, progress: Option<Py<PyAny>>) -> PyResult<Vec<f32>> {
         let x_vec = pylist_to_vec2(x);
         let y_vec = pylist_to_vec2(y);
-        
-        // Capture the history returned by Rust
-        let history = self.inner.train(&x_vec, &y_vec, epochs, lr, weight_decay);
-        
-        // Return it to Python
+
+        let history = if let Some(cb) = progress {
+            let mut callback = move |epoch: usize, loss: f32| {
+                Python::with_gil(|py| {
+                    if let Err(err) = cb.call1(py, (epoch, loss)) {
+                        err.print(py);
+                    }
+                });
+            };
+
+            self.inner.train(&x_vec, &y_vec, epochs, lr, weight_decay, Some(&mut callback))
+        } else {
+            self.inner.train(&x_vec, &y_vec, epochs, lr, weight_decay, None)
+        };
         Ok(history)
     }
 
