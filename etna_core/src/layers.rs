@@ -62,7 +62,9 @@ impl Linear {
     pub fn update_sgd(&mut self, opt: &SGD) {
         for i in 0..self.weights.len() {
             for j in 0..self.weights[0].len() {
-                self.weights[i][j] -= opt.learning_rate * self.grad_weights[i][j];
+                // L2 regularization: weight = weight - lr * (grad + weight_decay * weight)
+                let grad_with_reg = self.grad_weights[i][j] + opt.weight_decay * self.weights[i][j];
+                self.weights[i][j] -= opt.learning_rate * grad_with_reg;
                 self.grad_weights[i][j] = 0.0;
             }
             self.bias[i] -= opt.learning_rate * self.grad_bias[i];
@@ -70,8 +72,17 @@ impl Linear {
         }
     }
 
-    pub fn update_adam(&mut self, opt: &mut Adam) {
-        opt.step(&mut self.weights, &self.grad_weights, &mut self.bias, &self.grad_bias);
+    /// Update weights and biases using Adam optimizer
+    pub fn update_adam(&mut self, optimizer: &mut Adam) {
+        // Use Adam's step method which handles the update internally
+        optimizer.step(
+            &mut self.weights,
+            &self.grad_weights,
+            &mut self.bias,
+            &self.grad_bias,
+        );
+
+        // Clear gradients after update
         self.grad_weights.iter_mut().for_each(|r| r.iter_mut().for_each(|v| *v = 0.0));
         self.grad_bias.iter_mut().for_each(|v| *v = 0.0);
     }
@@ -97,6 +108,7 @@ impl ReLU {
 
 /// =======================
 /// Leaky ReLU
+/// Leaky ReLU activation: max(0.01 * x, x)
 /// =======================
 #[derive(Serialize, Deserialize)]
 pub struct LeakyReLU;
@@ -134,7 +146,7 @@ impl Sigmoid {
 
     pub fn backward(grad: &Vec<Vec<f32>>, out: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
         grad.iter().zip(out.iter())
-            .map(|(g, o)| g.iter().zip(o.iter()).map(|(g, o)| g * o * (1.0 - o)).collect())
+            .map(|(g, o)| g.iter().zip(o.iter()).map(|(g_val, o_val)| g_val * o_val * (1.0 - o_val)).collect())
             .collect()
     }
 }

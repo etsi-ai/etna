@@ -1,21 +1,23 @@
 // Optimizers (SGD, Adam)
 
-/// Supported optimizer types
-#[derive(Clone, Copy)]
-pub enum OptimizerType {
-    SGD,
-    Adam,
-}
-
 /// Simple Stochastic Gradient Descent (SGD) optimizer
 pub struct SGD {
     pub learning_rate: f32,
+    pub weight_decay: f32,
 }
 
 impl SGD {
     pub fn new(lr: f32) -> Self {
         Self {
             learning_rate: lr,
+            weight_decay: 0.0,
+        }
+    }
+
+    pub fn with_weight_decay(lr: f32, weight_decay: f32) -> Self {
+        Self {
+            learning_rate: lr,
+            weight_decay,
         }
     }
 }
@@ -97,5 +99,23 @@ impl Adam {
 
             bias[i] -= self.lr * m_hat / (v_hat.sqrt() + self.epsilon);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sgd_with_weight_decay_creates_correctly() {
+        let optimizer = SGD::with_weight_decay(0.01, 0.001);
+        assert!((optimizer.learning_rate - 0.01).abs() < 1e-6);
+        assert!((optimizer.weight_decay - 0.001).abs() < 1e-6);
+    }
+
+    #[test]
+    fn sgd_default_has_no_weight_decay() {
+        let optimizer = SGD::new(0.1);
+        assert!((optimizer.weight_decay - 0.0).abs() < 1e-6);
     }
 }

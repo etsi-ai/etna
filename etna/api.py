@@ -47,7 +47,7 @@ class Model:
             else:
                 self.task_type = "regression"
                 self.task_code = 1
-                print(f"🔮 Auto-Detected Task: Regression (Target '{target}')")
+                print(f"[*] Auto-Detected Task: Regression (Target '{target}')")
 
         self.preprocessor = Preprocessor(self.task_type)
         self.rust_model = None
@@ -55,7 +55,19 @@ class Model:
         # Cached transformed data for persistence-safe prediction
         self._cached_X = None
 
-    def train(self, epochs: int = 100, lr: float = 0.01, optimizer: str = 'sgd'):
+    def train(self, epochs: int = 100, lr: float = 0.01, weight_decay: float = 0.0, optimizer: str = 'sgd'):
+        """
+        Train the model.
+
+        Args:
+            epochs: Number of training epochs
+            lr: Learning rate
+            weight_decay: L2 regularization coefficient (lambda). Higher values
+                         lead to smaller weights and help prevent overfitting.
+                         Typical values: 0.0001 to 0.01
+            optimizer: Optimizer to use ('sgd' or 'adam'). Default is 'sgd'.
+                      Adam optimizer provides better convergence with adaptive learning rates.
+        """
         if _etna_rust is None:
             raise ImportError(
                 "Rust core is not available. Please build the Rust extension "
@@ -68,17 +80,32 @@ class Model:
         # Cache transformed training data
         self._cached_X = np.array(X)
 
-        input_dim = len(X[0])
-        hidden_dim = 16
-        output_dim = self.preprocessor.output_dim
+        self.input_dim = len(X[0])
+        self.hidden_dim = 16
+        self.output_dim = self.preprocessor.output_dim
 
-        print(f"🚀 Initializing Rust Core [In: {input_dim}, Out: {output_dim}]...")
-        self.rust_model = _etna_rust.EtnaModel(
-            input_dim, hidden_dim, output_dim, self.task_code
-        )
+        optimizer_lower = optimizer.lower()
+        if optimizer_lower not in ['sgd', 'adam']:
+            raise ValueError(f"Unsupported optimizer '{optimizer}'. Choose 'sgd' or 'adam'.")
 
-        print("🔥 Training started...")
-        self.loss_history = self.rust_model.train(X, y, epochs, lr)
+        # LOGICAL FIX: Only initialize if model doesn't exist (supports incremental training)
+        if self.rust_model is None:
+            print(f"🚀 Initializing Rust Core [In: {self.input_dim}, Out: {self.output_dim}]...")
+            self.rust_model = _etna_rust.EtnaModel(self.input_dim, self.hidden_dim, self.output_dim, self.task_code)
+        else:
+            print(f"🔄 Resuming training on existing Core [In: {self.input_dim}, Out: {self.output_dim}]...")
+
+        optimizer_display = optimizer_lower.upper()
+        if weight_decay > 0:
+            print(f"🔥 Training started (Optimizer: {optimizer_display}, L2 regularization: λ={weight_decay})...")
+        else:
+            print(f"🔥 Training started (Optimizer: {optimizer_display})...")
+
+        # Pass optimizer string to Rust backend (it will default to SGD if None or invalid)
+        new_losses = self.rust_model.train(X, y, epochs, lr, weight_decay, optimizer_lower)
+
+        # LOGICAL FIX: Extend history instead of overwriting it
+        self.loss_history.extend(new_losses)
         print("✅ Training complete!")
 
     def predict(self, data_path: str = None):

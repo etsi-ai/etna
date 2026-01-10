@@ -6,14 +6,14 @@ mod model;
 mod layers;
 mod loss_function;
 mod optimizer;
+mod softmax;
 mod utils; 
 
 use pyo3::prelude::*;
 use pyo3::types::PyList;
 
-use crate::model::SimpleNN;
+use crate::model::{SimpleNN, OptimizerType};
 use crate::layers::Activation;
-use crate::optimizer::OptimizerType;
 
 /// Helper: Convert Python list to Rust Vec<Vec<f32>>
 fn pylist_to_vec2(pylist: &Bound<'_, PyList>) -> Vec<Vec<f32>> {
@@ -51,24 +51,21 @@ impl EtnaModel {
         }
     }
 
-    #[pyo3(signature = (x, y, epochs, lr, optimizer=None))]
-    fn train(
-        &mut self,
-        x: &Bound<'_, PyList>,
-        y: &Bound<'_, PyList>,
-        epochs: usize,
-        lr: f32,
-        optimizer: Option<&str>,
-    ) -> PyResult<Vec<f32>> {
+    #[pyo3(signature = (x, y, epochs, lr, weight_decay=0.0, optimizer="sgd"))]
+    fn train(&mut self, x: &Bound<'_, PyList>, y: &Bound<'_, PyList>, epochs: usize, lr: f32, weight_decay: f32, optimizer: &str) -> PyResult<Vec<f32>> {
         let x_vec = pylist_to_vec2(x);
         let y_vec = pylist_to_vec2(y);
 
+        // Parse optimizer string (default to SGD if not specified or invalid)
         let optimizer_type = match optimizer {
-            Some("adam") | Some("Adam") => OptimizerType::Adam,
-            _ => OptimizerType::SGD,
+            "adam" => OptimizerType::Adam,
+            _ => OptimizerType::SGD,  // Default to SGD for backward compatibility
         };
 
-        let history = self.inner.train(&x_vec, &y_vec, epochs, lr, optimizer_type);
+        // Capture the history returned by Rust
+        let history = self.inner.train(&x_vec, &y_vec, epochs, lr, weight_decay, optimizer_type);
+
+        // Return it to Python
         Ok(history)
     }
 
@@ -80,7 +77,8 @@ impl EtnaModel {
     fn save(&self, path: String) -> PyResult<()> {
         self.inner.save(&path).map_err(|e| {
             pyo3::exceptions::PyIOError::new_err(format!("Failed to save model: {}", e))
-        })
+        })?;
+        Ok(())
     }
 
     #[staticmethod]
