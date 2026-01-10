@@ -49,7 +49,7 @@ impl EtnaModel {
         let y_vec = pylist_to_vec2(y);
         
         // Capture the history returned by Rust
-        let history = self.inner.train(&x_vec, &y_vec, epochs, lr, weight_decay);
+        let history = self.inner.train(&x_vec,&y_vec,None,None,epochs,lr,weight_decay,false,0);
         
         // Return it to Python
         Ok(history)
