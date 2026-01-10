@@ -67,7 +67,11 @@ class Preprocessor:
 
 
             vals = series.fillna(mode_val).astype(str).values
-            unique_vals = np.unique(vals)
+            unique_vals = pd.Series(vals).unique().tolist()
+
+            if "__UNK__" not in unique_vals:
+                unique_vals.append("__UNK__")
+
 
 
 
@@ -80,8 +84,17 @@ class Preprocessor:
                  https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.OneHotEncoder.html
             '''                 
             one_hot = np.zeros((len(vals), len(mapping)))
+            
+
+
+            unk_index = mapping["__UNK__"]
+
             for i, v in enumerate(vals):
-                one_hot[i, mapping[v]] = 1.0
+                index = mapping.get(v, unk_index)
+                one_hot[i, index] = 1.0
+
+
+
 
             X_processed.append(one_hot)
 
@@ -137,9 +150,12 @@ class Preprocessor:
 
             # Implemented One-Hot Encoding for these columns - transform phase( Second point of the issue covered here)
             one_hot = np.zeros((len(vals), len(mapping)))
+            unk_index = mapping["__UNK__"]
+
             for i, v in enumerate(vals):
-                if v in mapping:
-                    one_hot[i, mapping[v]] = 1.0
+                index = mapping.get(v, unk_index)
+                one_hot[i, index] = 1.0
+
 
             X_processed.append(one_hot)
 
