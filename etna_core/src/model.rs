@@ -6,6 +6,9 @@ use crate::optimizer::{SGD, Adam};
 use serde::{Serialize, Deserialize};
 use std::fs::File;
 use std::io::{Write, Read};
+use rand::seq::SliceRandom;
+use rand::thread_rng;
+
 
 #[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum TaskType {
@@ -73,7 +76,90 @@ impl SimpleNN {
         output
     }
 
+ batch-training
+ batch-training
+    pub fn train(
+    &mut self,
+    x: &Vec<Vec<f32>>,
+    y: &Vec<Vec<f32>>,
+    epochs: usize,
+    lr: f32,
+    batch_size: usize,
+                ) -> Vec<f32> 
+    {
+        let batch_size = batch_size.max(1).min(x.len());
+
+        let mut optimizer = SGD::new(lr);
+        let mut loss_history = Vec::new(); // Create list
+
+        for epoch in 0..epochs {
+            let mut indices: Vec<usize> = (0..x.len()).collect();
+            indices.shuffle(&mut thread_rng());
+            let mut epoch_loss = 0.0;
+            let mut batch_count = 0;
+            for batch_start in (0..indices.len()).step_by(batch_size) {
+    let batch_end = (batch_start + batch_size).min(indices.len());
+    let batch_indices = &indices[batch_start..batch_end];
+
+    // Build x_batch and y_batch
+    let x_batch: Vec<Vec<f32>> = batch_indices.iter()
+        .map(|&i| x[i].clone())
+        .collect();
+
+    let y_batch: Vec<Vec<f32>> = batch_indices.iter()
+        .map(|&i| y[i].clone())
+        .collect();
+
+    let preds = self.forward(&x_batch);
+
+    let (loss, grad_output) = match self.task_type {
+        TaskType::Classification => {
+            let loss_val = cross_entropy(&preds, &y_batch);
+            let grad = Softmax::backward(&preds, &y_batch);
+            (loss_val, grad)
+        },
+        TaskType::Regression => {
+            let loss_val = mse(&preds, &y_batch);
+            let grad = preds.iter().zip(y_batch.iter())
+                .map(|(p_row, y_row)| {
+                    p_row.iter().zip(y_row.iter())
+                        .map(|(p, t)| p - t)
+                        .collect()
+                })
+                .collect();
+            (loss_val, grad)
+        }
+    };
+
+    let grad_linear2 = self.linear2.backward(&grad_output, &self.hidden_cache);
+    let grad_relu = ReLU::backward(&grad_linear2, &self.hidden_cache);
+    let _grad_linear1 = self.linear1.backward(&grad_relu, &self.input_cache);
+
+    self.linear1.update(&mut optimizer);
+    self.linear2.update(&mut optimizer);
+
+    epoch_loss += loss;
+    batch_count += 1;
+}
+
+        let avg_loss = epoch_loss / batch_count as f32;
+        loss_history.push(avg_loss);
+
+         if epoch % 10 == 0 {
+                println!(
+                "Epoch {}/{} - Loss: {:.4}",
+                 epoch,
+                 epochs,
+                 avg_loss
+                );
+
+
+
+    pub fn train(&mut self, x: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>, epochs: usize, lr: f32, weight_decay: f32) -> Vec<f32> {
+        let mut optimizer = SGD::with_weight_decay(lr, weight_decay);
+
     pub fn train(&mut self, x: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>, epochs: usize, lr: f32, weight_decay: f32, optimizer_type: OptimizerType) -> Vec<f32> {
+ main
         let mut loss_history = Vec::new(); // Create list
 
         // Create separate optimizer instances for each layer
@@ -151,6 +237,7 @@ impl SimpleNN {
 
             if epoch % 10 == 0 {
                 println!("Epoch {}/{} - Loss: {:.4}", epoch, epochs, loss);
+main
             }
         }
         loss_history // Return list

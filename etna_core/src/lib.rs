@@ -51,8 +51,30 @@ impl EtnaModel {
         }
     }
 
+ batch-training
+ batch-training
+    fn train(
+    &mut self,
+    x: &Bound<'_, PyList>,
+    y: &Bound<'_, PyList>,
+    epochs: usize,
+    lr: f32,
+    batch_size: Option<usize>,
+) -> PyResult<Vec<f32>> {
+         let x_vec = pylist_to_vec2(x);
+        let y_vec = pylist_to_vec2(y);
+        
+        // Capture the history returned by Rust
+        let bs = batch_size.unwrap_or(32);
+
+        let history = self.inner.train(&x_vec, &y_vec, epochs, lr, bs);
+
+    #[pyo3(signature = (x, y, epochs, lr, weight_decay=0.0))]
+    fn train(&mut self, x: &Bound<'_, PyList>, y: &Bound<'_, PyList>, epochs: usize, lr: f32, weight_decay: f32) -> PyResult<Vec<f32>> {
+
     #[pyo3(signature = (x, y, epochs, lr, weight_decay=0.0, optimizer="sgd"))]
     fn train(&mut self, x: &Bound<'_, PyList>, y: &Bound<'_, PyList>, epochs: usize, lr: f32, weight_decay: f32, optimizer: &str) -> PyResult<Vec<f32>> {
+main
         let x_vec = pylist_to_vec2(x);
         let y_vec = pylist_to_vec2(y);
 
@@ -63,7 +85,12 @@ impl EtnaModel {
         };
 
         // Capture the history returned by Rust
+ batch-training
+        let history = self.inner.train(&x_vec, &y_vec, epochs, lr, weight_decay);
+ main
+
         let history = self.inner.train(&x_vec, &y_vec, epochs, lr, weight_decay, optimizer_type);
+ main
         
         // Return it to Python
         Ok(history)

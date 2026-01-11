@@ -40,3 +40,6 @@ mlflow.db
 *.ckpt
 *_model.json
 *_regressor.json
+
+# --- csv ---
+*.csv

@@ -51,6 +51,30 @@ class Model:
 
         self.preprocessor = Preprocessor(self.task_type)
         self.rust_model = None
+    def train(self, epochs=100, lr=0.01, batch_size=32):
+
+batch-training
+        print("⚙️  Preprocessing data...")
+        X, y = self.preprocessor.fit_transform(self.df, self.target)
+
+        input_dim = len(X[0])
+        hidden_dim = 16
+        output_dim = self.preprocessor.output_dim
+
+        print(f"🚀 Initializing Rust Core [In: {input_dim}, Out: {output_dim}]...")
+        self.rust_model = _etna_rust.EtnaModel(
+        input_dim, hidden_dim, output_dim, self.task_code
+    )
+
+        print("🔥 Training started...")
+        losses = self.rust_model.train(X, y, epochs, lr, batch_size)
+
+        # Rust may or may not return losses yet
+        if losses is None:
+            self.loss_history = []
+        else:
+            self.loss_history = list(losses)
+
 
         # Cached transformed data for persistence-safe prediction
         self._cached_X = None
@@ -99,6 +123,11 @@ class Model:
         if weight_decay > 0:
             print(f"🔥 Training started (Optimizer: {optimizer_display}, L2 regularization: λ={weight_decay})...")
         else:
+ batch-training
+            print("🔥 Training started...")
+        self.loss_history = self.rust_model.train(X, y, epochs, lr, weight_decay)
+ main
+
             print(f"🔥 Training started (Optimizer: {optimizer_display})...")
 
         # Pass optimizer string to Rust backend (it will default to SGD if None or invalid)
@@ -106,7 +135,9 @@ class Model:
 
         # LOGICAL FIX: Extend history instead of overwriting it
         self.loss_history.extend(new_losses)
+ main
         print("✅ Training complete!")
+        return self.loss_history
 
     def predict(self, data_path: str = None):
         """
@@ -149,7 +180,8 @@ class Model:
                 for p in preds
             ]
             return [float(r) for r in results]
-        
+ batch-training
+
     def summary(self):
         print("\n Model Summary")
         print("=" * 60)
@@ -176,6 +208,7 @@ class Model:
         total_params = l1_params + l2_params
         print(f"Total Trainable Params: {total_params}\n")
 
+ main
     def save_model(self, path="model_checkpoint.json", run_name="ETNA_Run"):
         """
         Saves the model using Rust backend AND tracks it with MLflow.
