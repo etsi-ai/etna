@@ -34,7 +34,7 @@ class Model:
         if task_type:
             self.task_type = task_type.lower()
             self.task_code = 1 if self.task_type == "regression" else 0
-            print(f"🔮 User Task: {self.task_type.capitalize()} (Target '{target}')")
+            print(f"[*] User Task: {self.task_type.capitalize()} (Target '{target}')")
         else:
             target_data = self.df[target]
             is_numeric = pd.api.types.is_numeric_dtype(target_data)
@@ -43,11 +43,11 @@ class Model:
             if not is_numeric or (num_unique < 20 and num_unique < len(self.df) * 0.5):
                 self.task_type = "classification"
                 self.task_code = 0
-                print(f"🔮 Auto-Detected Task: Classification (Target '{target}')")
+                print(f"[*] Auto-Detected Task: Classification (Target '{target}')")
             else:
                 self.task_type = "regression"
                 self.task_code = 1
-                print(f"🔮 Auto-Detected Task: Regression (Target '{target}')")
+                print(f"[*] Auto-Detected Task: Regression (Target '{target}')")
 
         self.preprocessor = Preprocessor(self.task_type)
         self.rust_model = None
@@ -55,16 +55,18 @@ class Model:
         # Cached transformed data for persistence-safe prediction
         self._cached_X = None
 
-    def train(self, epochs: int = 100, lr: float = 0.01, weight_decay: float = 0.0):
+    def train(self, epochs: int = 100, lr: float = 0.01, weight_decay: float = 0.0, optimizer: str = 'sgd'):
         """
         Train the model.
-        
+
         Args:
             epochs: Number of training epochs
             lr: Learning rate
-            weight_decay: L2 regularization coefficient (lambda). Higher values 
-                         lead to smaller weights and help prevent overfitting.
-                         Typical values: 0.0001 to 0.01
+            weight_decay: L2 regularization coefficient (lambda). Higher values
+                          lead to smaller weights and help prevent overfitting.
+                          Typical values: 0.0001 to 0.01
+            optimizer: Optimizer to use ('sgd' or 'adam'). Default is 'sgd'.
+                       Adam optimizer provides better convergence with adaptive learning rates.
         """
         if _etna_rust is None:
             raise ImportError(
@@ -77,19 +79,33 @@ class Model:
         
         # Cache training data for predict() without arguments
         self._cached_X = np.array(X)
-        
+
         self.input_dim = len(X[0])
-        self.hidden_dim = 16 
+        self.hidden_dim = 16
         self.output_dim = self.preprocessor.output_dim
-        
-        print(f"🚀 Initializing Rust Core [In: {self.input_dim}, Out: {self.output_dim}]...")
-        self.rust_model = _etna_rust.EtnaModel(self.input_dim, self.hidden_dim, self.output_dim, self.task_code)
-        
-        if weight_decay > 0:
-            print(f"🔥 Training started (L2 regularization: λ={weight_decay})...")
+
+        optimizer_lower = optimizer.lower()
+        if optimizer_lower not in ['sgd', 'adam']:
+            raise ValueError(f"Unsupported optimizer '{optimizer}'. Choose 'sgd' or 'adam'.")
+
+        # LOGICAL FIX: Only initialize if model doesn't exist (supports incremental training)
+        if self.rust_model is None:
+            print(f"🚀 Initializing Rust Core [In: {self.input_dim}, Out: {self.output_dim}]...")
+            self.rust_model = _etna_rust.EtnaModel(self.input_dim, self.hidden_dim, self.output_dim, self.task_code)
         else:
-            print("🔥 Training started...")
-        self.loss_history = self.rust_model.train(X, y, epochs, lr, weight_decay)
+            print(f"🔄 Resuming training on existing Core [In: {self.input_dim}, Out: {self.output_dim}]...")
+
+        optimizer_display = optimizer_lower.upper()
+        if weight_decay > 0:
+            print(f"🔥 Training started (Optimizer: {optimizer_display}, L2 regularization: λ={weight_decay})...")
+        else:
+            print(f"🔥 Training started (Optimizer: {optimizer_display})...")
+
+        # Pass optimizer string to Rust backend (it will default to SGD if None or invalid)
+        new_losses = self.rust_model.train(X, y, epochs, lr, weight_decay, optimizer_lower)
+
+        # LOGICAL FIX: Extend history instead of overwriting it
+        self.loss_history.extend(new_losses)
         print("✅ Training complete!")
 
     def predict(self, data_path: str = None):
@@ -98,7 +114,7 @@ class Model:
         
         Args:
             data_path: Optional path to CSV file. If not provided, uses the 
-                      training data (useful for evaluating on training set).
+                       training data (useful for evaluating on training set).
         
         Returns:
             List of predictions (class labels for classification, values for regression)
