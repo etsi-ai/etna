@@ -25,7 +25,13 @@ impl Linear {
         self.cached_input = input.clone(); // Cache input for backpropagation
         input.iter().map(|x| {
             self.weights.iter()
-                .map(|w| w.iter().zip(x.iter()).map(|(w_val, x_val)| w_val * x_val).sum::<f32>() + self.bias.iter().sum::<f32>())
+                .map(|w| 
+                    w.iter()
+                    .zip(x.iter())
+                    .map(|(w_val, x_val)| w_val * x_val)
+                    .sum::<f32>() 
+                    + self.bias[j]
+                )
                 .collect::<Vec<f32>>()
         }).collect()
     }

@@ -55,7 +55,7 @@ class Model:
         # Cached transformed data for persistence-safe prediction
         self._cached_X = None
 
-    def train(self, epochs: int = 100, lr: float = 0.01, weight_decay: float = 0.0):
+    def train(self,epochs: int = 100,lr: float = 0.01,weight_decay: float = 0.0,early_stopping: bool = False,patience: int = 10,validation_split: float | None = None,):
         """
         Train the model.
         
@@ -74,7 +74,19 @@ class Model:
 
         print("⚙️  Preprocessing data...")
         X, y = self.preprocessor.fit_transform(self.df, self.target)
-        
+
+        # Validation split (optional)
+        X_train, y_train = X, y
+        X_val, y_val = None, None
+
+        if validation_split is not None:
+            if not (0.0 < validation_split < 1.0):
+                raise ValueError("validation_split must be between 0 and 1")
+
+            split_idx = int(len(X) * (1 - validation_split))
+            X_train, X_val = X[:split_idx], X[split_idx:]
+            y_train, y_val = y[:split_idx], y[split_idx:]
+
         # Cache training data for predict() without arguments
         self._cached_X = np.array(X)
         
@@ -89,7 +101,7 @@ class Model:
             print(f"🔥 Training started (L2 regularization: λ={weight_decay})...")
         else:
             print("🔥 Training started...")
-        self.loss_history = self.rust_model.train(X, y, epochs, lr, weight_decay)
+        self.loss_history = self.rust_model.train(X_train,y_train,X_val,y_val,epochs=epochs,lr=lr,weight_decay=weight_decay,early_stopping=early_stopping,patience=patience,)
         print("✅ Training complete!")
 
     def predict(self, data_path: str = None):
