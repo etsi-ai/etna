@@ -1,7 +1,8 @@
 // Model training/prediction logic
-use crate::layers::{Linear, Activation, Softmax, InitStrategy};
+use crate::layers::{Linear, Activation, InitStrategy};
+use crate::softmax::Softmax;
 use crate::loss_function::{cross_entropy, mse};
-use crate::optimizer::SGD;
+use crate::optimizer::{SGD, Adam};
 use serde::{Serialize, Deserialize};
 use std::fs::File;
 use std::io::{Write, Read};
@@ -13,6 +14,12 @@ use rand::thread_rng;
 pub enum TaskType {
     Classification,
     Regression,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum OptimizerType {
+    SGD,
+    Adam,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -69,6 +76,7 @@ impl SimpleNN {
         output
     }
 
+ batch-training
  batch-training
     pub fn train(
     &mut self,
@@ -149,7 +157,37 @@ impl SimpleNN {
 
     pub fn train(&mut self, x: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>, epochs: usize, lr: f32, weight_decay: f32) -> Vec<f32> {
         let mut optimizer = SGD::with_weight_decay(lr, weight_decay);
+
+    pub fn train(&mut self, x: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>, epochs: usize, lr: f32, weight_decay: f32, optimizer_type: OptimizerType) -> Vec<f32> {
+ main
         let mut loss_history = Vec::new(); // Create list
+
+        // Create separate optimizer instances for each layer
+        // This is critical for Adam, as each layer has different dimensions
+        let mut sgd_l1 = match optimizer_type {
+            OptimizerType::SGD => Some(if weight_decay > 0.0 {
+                SGD::with_weight_decay(lr, weight_decay)
+            } else {
+                SGD::new(lr)
+            }),
+            OptimizerType::Adam => None,
+        };
+        let mut sgd_l2 = match optimizer_type {
+            OptimizerType::SGD => Some(if weight_decay > 0.0 {
+                SGD::with_weight_decay(lr, weight_decay)
+            } else {
+                SGD::new(lr)
+            }),
+            OptimizerType::Adam => None,
+        };
+        let mut adam_l1 = match optimizer_type {
+            OptimizerType::SGD => None,
+            OptimizerType::Adam => Some(Adam::new(lr, 0.9, 0.999, 1e-8)),
+        };
+        let mut adam_l2 = match optimizer_type {
+            OptimizerType::SGD => None,
+            OptimizerType::Adam => Some(Adam::new(lr, 0.9, 0.999, 1e-8)),
+        };
 
         for epoch in 0..epochs {
             let preds = self.forward(x);
@@ -171,12 +209,29 @@ impl SimpleNN {
                 }
             };
 
-            let grad_linear2 = self.linear2.backward(&grad_output, &self.hidden_cache);
+            let grad_linear2 = self.linear2.backward(&grad_output);
             let grad_activation = self.activation.backward(&grad_linear2, &self.hidden_cache);
-            let _grad_linear1 = self.linear1.backward(&grad_activation, &self.input_cache);
+            let _grad_linear1 = self.linear1.backward(&grad_activation);
 
-            self.linear1.update(&mut optimizer);
-            self.linear2.update(&mut optimizer);
+            // Update layers based on optimizer type
+            match optimizer_type {
+                OptimizerType::SGD => {
+                    if let Some(ref mut opt) = sgd_l1 {
+                        self.linear1.update_sgd(opt);
+                    }
+                    if let Some(ref mut opt) = sgd_l2 {
+                        self.linear2.update_sgd(opt);
+                    }
+                },
+                OptimizerType::Adam => {
+                    if let Some(ref mut opt) = adam_l1 {
+                        self.linear1.update_adam(opt);
+                    }
+                    if let Some(ref mut opt) = adam_l2 {
+                        self.linear2.update_adam(opt);
+                    }
+                },
+            }
 
             loss_history.push(loss); // Store loss
 
