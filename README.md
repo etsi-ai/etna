@@ -1,180 +1,116 @@
-<div align="center">
-
 # etsi.etna
 ### High-Performance Neural Networks. Rust Core. Python Ease.
+
+<div align="center">
 
 [![License](https://img.shields.io/badge/License-BSD_2--Clause-orange.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://www.python.org/)
 [![Rust](https://img.shields.io/badge/Rust-1.70%2B-black)](https://www.rust-lang.org/)
 [![MLflow](https://img.shields.io/badge/MLflow-Integrated-blueviolet)](https://mlflow.org/)
 
-> **What if machine learning felt effortless?**
-
-`etsi.etna` is a minimalistic, dependency-light neural network library
-designed to make training and evaluating models on structured data fast,
-interpretable and beginner-friendly. It focuses on auto-preprocessing,
-simple linear networks, and core metrics - ideal for research
-prototyping, learning, and quick deployments.
-
-[Features](#key-features) • [Installation](#installation) • [MVP Demo](#run-the-mvp-demo) • [Quickstart](#quickstart) • [Experiment Tracking](#experiment-tracking)
-
 </div>
 
 ---
 
-## Why Etna?
+## 🏗️ Technical Architecture
 
-Machine learning libraries often force a trade-off: simplicity or speed. Etna removes that barrier.
+Etna operates as a hybrid system where the high-level orchestration is managed by Python, while the performance-critical computation is offloaded to a compiled Rust core.
 
-* **Blazing Fast**: The heavy lifting (Linear layers, ReLU, Softmax, Backprop) is handled by a highly optimized **Rust** core (`etna_core`).
-* **Pythonic API**: Users interact with a familiar, Scikit-learn-like Python interface.
-* **Intelligent Defaults**: Automatically detects if you are performing **Classification** or **Regression** based on your target data.
-* **Production Ready**: Built-in **MLflow** integration for experiment tracking and model versioning out of the box.
+### 1. The PyO3 Bridge
+The following diagram illustrates the FFI (Foreign Function Interface) boundary. Python's `api.py` acts as a wrapper that invokes native Rust methods through PyO3 bindings.
 
----
+```mermaid
+graph TD
+    subgraph Python_Frontend ["Python API (api.py)"]
+        A[Model Class] -->|Method Call| B[PyO3 Bound Method]
+        B -->|Return PyObject| A
+    end
 
-## Key Features
+    subgraph Bridge_Layer ["PyO3 / FFI Layer"]
+        B -->|Data Marshaling| C[Native Rust Bindings]
+        C -->|Unbox/Convert| D[Rust Primitive Types]
+    end
 
-* **Hybrid Architecture**: `pyo3` bindings bridge Python ease with Rust performance.
-* **Auto-Preprocessing**: Automatic scaling (Standard/MinMax) and categorical encoding (One-Hot) based on column types.
-* **Smart Task Detection**:
-    * *Classification*: Auto-detects low cardinality or string targets.
-    * *Regression*: Auto-detects continuous numeric targets.
-* **Comprehensive Metrics**: Built-in evaluation suite including Accuracy, F1-Score, MSE, R², and Cross-Entropy Loss.
-* **Zero-Config MLflow**: Save, version, and track model metrics with a single line of code.
+    subgraph Rust_Engine ["Rust Core (etna_core)"]
+        D --> E[Neural Network Engine]
+        E --> F[Backprop & Optimization]
+        F -->|Result Vectors| C
+    end
+```
 
----
-
-## Installation
-
-### Prerequisites
-* Python (3.8 or later)
-* Rust (1.70 or later)
-
-### From Source (Development)
-Etna uses `maturin` to build the Rust extensions.
-
-1.  **Clone the repository**
-    ```bash
-    git clone https://github.com/etsi-ai/etna.git
-    cd etna
-    ```
+### 2. Preprocessing Data Flow
+Data follows a specific pipeline before reaching the training loop. Raw inputs are processed in Python using optimized Pandas/NumPy routines before being serialized into the Rust backend.
+```mermaid
+flowchart LR
+    A[(Raw CSV)] -->|Pandas| B[Python Preprocessor]
     
-2.  **Set up a Virtual Environment (Recommended)**
-    ```bash
-    python -m venv .venv
+    subgraph Python_Logic [Data Conditioning]
+        B --> C{Categorical?}
+        C -->|Yes| D[One-Hot Encoding]
+        C -->|No| E[Standard Scaling]
+    end
 
-    # Activate the environment
-    source .venv/bin/activate  # Linux/macOS
-    # .venv\Scripts\activate   # Windows
-    ```
+    D & E --> F[Float64 Buffer]
+    F -->|Zero-copy/Maturin| G[Rust Tensor Core]
 
-3.  **Install dependencies & build**
-    ```bash
-    # Install build tools
-    pip install maturin numpy pandas mlflow jupyter pytest
+    subgraph Rust_Backend [Training Loop]
+        G --> H[Input Layer]
+        H --> I[Rust Forward Pass]
+    end
+```
+
+### 3. Smart Task Detection Logic
+Etna's `__init__` branching logic automatically determines the mathematical objective (Classification vs. Regression) based on target variable heuristics.
+```mermaid
+graph TD
+    Start([Model.__init__]) --> Input{Target Data Type}
     
-    # Build and install locally
-    maturin develop --release
-    ```
-
----
-
-## Run the MVP Demo
-
-The best way to see Etna in action is to run our interactive MVP notebook. This notebook verifies your installation by performing an end-to-end test of the entire system.
-
-It will automatically:
-1.  **Generate Dummy Data**: Creates synthetic datasets for both classification and regression.
-2.  **Train Models**: Trains the Rust backend on both tasks.
-3.  **Track Experiments**: Logs loss curves and artifacts to a local MLflow server.
-
-To run it:
-```bash
-jupyter notebook mvp_testing.ipynb
+    Input -->|String/Object| Task_C[Task: Classification]
+    Input -->|Numeric| Check_Card{Cardinality / Unique < 10%}
+    
+    Check_Card -->|True| Task_C
+    Check_Card -->|False| Task_R[Task: Regression]
+    
+    Task_C --> Map_C[Loss: CrossEntropy / Map: String-to-Int]
+    Task_R --> Map_R[Loss: MSE / Map: Float64]
+    
+    Map_C & Map_R --> Init_Rust[Initialize Rust Structs]
 ```
 
 ---
 
-## Quickstart
+## 🔧 Technical Troubleshooting
+Building and linking Rust extensions requires a specific toolchain configuration.
+* **Maturin Build Failures:** Ensure `pip install maturin` is updated to the latest version. If build fails on linkers, verify that the `target` directory has write permissions.
+* **C++ Compiler Requirement (Windows):** Even though the core is Rust, PyO3 requires the MSVC linker. Ensure "Desktop development with C++" is installed via Visual Studio Installer.
+* **Architecture Mismatches:** If using macOS Silicon, ensure both Python and Rust are targeting `aarch64-apple-darwin`.
 
-If you prefer to start coding immediately, here are the basics:
+---
 
-1. **Classification (Auto-Detected)**
-Etna automatically handles string labels and normalizes your data.
-```bash
-from etna import Model
-from etna.metrics import accuracy_score
-
-# Initialize model (Auto-detects Classification based on target)
-model = Model(file_path="iris.csv", target="species")
-
-# Train with Rust backend
-model.train(epochs=100, lr=0.01)
-
-# Predict (Returns original class labels, e.g., "setosa")
-predictions = model.predict()
-print("Predictions:", predictions[:5])
+## 🚀 Development Setup
+**Build from Source**
 ```
+# Clone and enter repo
+git clone [https://github.com/etsi-ai/etna.git](https://github.com/etsi-ai/etna.git) && cd etna
 
-2. **Regression (Manual Override)**
-You can explicitly define the task type if needed.
-```bash
-# Force regression for continuous targets
-model = Model(file_path="housing.csv", target="price", task_type="regression")
-
-model.train(epochs=500, lr=0.001)
-
-# Predict (Returns float values)
-prices = model.predict()
+# Build Rust extensions and install in dev mode
+maturin develop --release
 ```
+**Internal Metrics Tracking**
+Etna utilizes MLflow to track Rust-calculated gradients and loss values. These are passed back across the bridge at the end of each epoch to minimize FFI overhead.
 
 ---
 
-## Experiment Tracking
+## 📄 License
 
-Etna includes native MLflow integration. Track your loss curves, parameters, and artifacts without setting up complex boilerplate.
-```bash
-# Train your model
-model.train(epochs=200)
-
-# Save locally AND log to MLflow in one step
-model.save_model(
-    path="my_model_v1.json", 
-    run_name="MVP_Demo_Run"
-)
-```
-**What happens automatically:**
-
-* Model artifact saved to `my_model_v1.json`
-* Parameters (`task_type`, `target`) logged to MLflow
-* Training Loss history logged as metrics
-* Artifacts uploaded to the MLflow run
-
-View your dashboard by running `mlflow ui` in your terminal and visiting `http://localhost:5000`
+This project is distributed under the **BSD-2-Clause License**. See the [LICENSE](LICENSE) file for complete details.
 
 ---
 
-## Contributing
+<div align="center">
 
-Pull requests are welcome!
+**Built with ❤️ by the etsi.ai Team**
 
-Please refer to [CONTRIBUTING.md](https://github.com/etsi-ai/etna/blob/main/CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](https://github.com/etsi-ai/etna/blob/main/CODE_OF_CONDUCT.md) before submitting a Pull Request.
+[⬆ Back to Top](#etsietna)
 
----
-
-## Join the Community
-
-Connect with the **etsi.ai** team and other contributors on our Discord.
-
-[![Discord](https://img.shields.io/badge/Discord-Join%20the%20Server-7289DA?style=for-the-badge&logo=discord&logoColor=white)](https://discord.com/invite/VCeY6H72rq)
-
----
-
-## License
-
-This project is distributed under the **BSD-2-Clause License**. See the [LICENSE](https://github.com/etsi-ai/etna/blob/main/LICENSE) for details.
-
----
-
-> Built with ❤️ by etsi.ai
+</div>
