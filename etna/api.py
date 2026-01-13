@@ -8,6 +8,7 @@ import numpy as np
 
 from .utils import load_data
 from .preprocessing import Preprocessor
+from .metrics import CrossEntropyLoss
 
 # Safe Rust import
 try:
@@ -54,8 +55,9 @@ class Model:
 
         # Cached transformed data for persistence-safe prediction
         self._cached_X = None
+        self.val_loss_history = []
 
-    def train(self, epochs: int = 100, lr: float = 0.01, weight_decay: float = 0.0, optimizer: str = 'sgd'):
+    def train(self, epochs: int = 100, lr: float = 0.01, weight_decay: float = 0.0, optimizer: str = 'sgd', validation_split: float = 0.2):
         """
         Train the model.
 
@@ -67,6 +69,8 @@ class Model:
                           Typical values: 0.0001 to 0.01
             optimizer: Optimizer to use ('sgd' or 'adam'). Default is 'sgd'.
                        Adam optimizer provides better convergence with adaptive learning rates.
+            validation_split: Fraction of data to use for validation (default: 0.2).
+                            Set to 0.0 to disable validation split.
         """
         if _etna_rust is None:
             raise ImportError(
@@ -74,8 +78,27 @@ class Model:
                 "before calling model.train()."
             )
 
+        if not 0.0 <= validation_split < 1.0:
+            raise ValueError(f"validation_split must be in [0.0, 1.0), got {validation_split}")
+
         print("⚙️  Preprocessing data...")
         X, y = self.preprocessor.fit_transform(self.df, self.target)
+        
+        # Split data into training and validation sets
+        n_samples = len(X)
+        if validation_split > 0.0:
+            split_idx = int(n_samples * (1 - validation_split))
+            X_train = X[:split_idx]
+            y_train = y[:split_idx]
+            X_val = X[split_idx:]
+            y_val = y[split_idx:]
+            print(f"📊 Data split: {len(X_train)} training samples, {len(X_val)} validation samples")
+        else:
+            X_train = X
+            y_train = y
+            X_val = []
+            y_val = []
+            print("📊 Using full dataset for training (no validation split)")
         
         # Cache training data for predict() without arguments
         self._cached_X = np.array(X)
@@ -101,12 +124,75 @@ class Model:
         else:
             print(f"🔥 Training started (Optimizer: {optimizer_display})...")
 
-        # Pass optimizer string to Rust backend (it will default to SGD if None or invalid)
-        new_losses = self.rust_model.train(X, y, epochs, lr, weight_decay, optimizer_lower)
+        # Train epoch-by-epoch to calculate validation loss after each epoch
+        train_losses = []
+        val_losses = []
+        
+        for epoch in range(epochs):
+            # Train for one epoch
+            epoch_losses = self.rust_model.train(X_train, y_train, 1, lr, weight_decay, optimizer_lower)
+            train_losses.extend(epoch_losses)
+            
+            # Calculate validation loss if validation split is enabled
+            if validation_split > 0.0 and len(X_val) > 0:
+                val_loss = self._calculate_validation_loss(X_val, y_val)
+                val_losses.append(val_loss)
+                
+                if epoch % 10 == 0:
+                    print(f"Epoch {epoch}/{epochs} - Train Loss: {epoch_losses[0]:.4f}, Val Loss: {val_loss:.4f}")
+            else:
+                if epoch % 10 == 0:
+                    print(f"Epoch {epoch}/{epochs} - Loss: {epoch_losses[0]:.4f}")
 
         # LOGICAL FIX: Extend history instead of overwriting it
-        self.loss_history.extend(new_losses)
+        self.loss_history.extend(train_losses)
+        if validation_split > 0.0:
+            self.val_loss_history.extend(val_losses)
         print("✅ Training complete!")
+
+    def _calculate_validation_loss(self, X_val, y_val):
+        """
+        Calculate validation loss on validation set.
+        
+        Args:
+            X_val: Validation features
+            y_val: Validation targets
+            
+        Returns:
+            Validation loss value
+        """
+        # Get raw forward outputs (probabilities for classification, values for regression)
+        X_val_list = X_val.tolist() if isinstance(X_val, np.ndarray) else X_val
+        y_val_list = y_val.tolist() if isinstance(y_val, np.ndarray) else y_val
+        
+        # Get raw outputs from model
+        raw_outputs = self.rust_model.forward(X_val_list)
+        
+        if self.task_type == "classification":
+            # For classification, use cross-entropy loss
+            # y_val is already one-hot encoded from preprocessing
+            loss = CrossEntropyLoss.calculate(y_val_list, raw_outputs)
+        else:
+            # For regression, use MSE
+            # y_val is a list of lists (one value per sample)
+            # raw_outputs is also a list of lists (one value per sample)
+            y_val_array = np.array(y_val_list)
+            raw_outputs_array = np.array(raw_outputs)
+            
+            # Handle case where y_val might be 2D or 1D
+            if y_val_array.ndim == 2:
+                y_val_flat = y_val_array.flatten()
+            else:
+                y_val_flat = y_val_array
+                
+            if raw_outputs_array.ndim == 2:
+                raw_outputs_flat = raw_outputs_array.flatten()
+            else:
+                raw_outputs_flat = raw_outputs_array
+                
+            loss = float(np.mean((y_val_flat - raw_outputs_flat) ** 2))
+        
+        return loss
 
     def predict(self, data_path: str = None):
         """
@@ -218,9 +304,15 @@ class Model:
             mlflow.log_param("task_type", self.task_type)
             mlflow.log_param("target_column", self.target)
 
-            print(f"📈 Logging {len(self.loss_history)} metrics points...")
+            print(f"📈 Logging {len(self.loss_history)} training metrics points...")
             for epoch, loss in enumerate(self.loss_history):
                 mlflow.log_metric("loss", loss, step=epoch)
+            
+            # Log validation loss if available
+            if self.val_loss_history:
+                print(f"📈 Logging {len(self.val_loss_history)} validation metrics points...")
+                for epoch, val_loss in enumerate(self.val_loss_history):
+                    mlflow.log_metric("val_loss", val_loss, step=epoch)
 
             mlflow.log_artifact(path)
             mlflow.log_artifact(preprocessor_path)

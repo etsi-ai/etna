@@ -74,6 +74,13 @@ impl EtnaModel {
         Ok(self.inner.predict(&x_vec))
     }
 
+    /// Get raw forward pass outputs (probabilities for classification, values for regression)
+    /// This is useful for calculating validation loss
+    fn forward(&mut self, x: &Bound<'_, PyList>) -> PyResult<Vec<Vec<f32>>> {
+        let x_vec = pylist_to_vec2(x);
+        Ok(self.inner.forward(&x_vec))
+    }
+
     fn save(&self, path: String) -> PyResult<()> {
         self.inner.save(&path).map_err(|e| {
             pyo3::exceptions::PyIOError::new_err(format!("Failed to save model: {}", e))
