@@ -66,7 +66,19 @@ impl SimpleNN {
         output
     }
 
-    pub fn train(&mut self, x: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>, x_val: Option<&Vec<Vec<f32>>>,  y_val: Option<&Vec<Vec<f32>>>, epochs: usize, lr: f32, weight_decay: f32, early_stopping: bool,  patience: usize) -> Vec<f32> {
+    pub fn train(
+        &mut self,
+        x: &Vec<Vec<f32>>,
+        y: &Vec<Vec<f32>>,
+        x_val: Option<&Vec<Vec<f32>>>,
+        y_val: Option<&Vec<Vec<f32>>>,
+        epochs: usize,
+        lr: f32,
+        weight_decay: f32,
+        early_stopping: bool,
+        patience: usize,
+    ) -> Vec<f32> {
+
         let mut optimizer = SGD::with_weight_decay(lr, weight_decay);
         let mut loss_history = Vec::new(); // Create list
         let mut best_loss = f32::INFINITY;

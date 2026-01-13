@@ -43,30 +43,38 @@ impl EtnaModel {
         }
     }
 
-    #[pyo3(signature = (x,y,x_val=None,y_val=None,*,epochs=100,lr=0.01,weight_decay=0.0,early_stopping=false,patience=10))]
-        fn train(&mut self,x: &Bound<'_, PyList>,y: &Bound<'_, PyList>,x_val: Option<&Bound<'_, PyList>>,y_val: Option<&Bound<'_, PyList>>,epochs: usize,lr: f32,weight_decay: f32,early_stopping: bool,patience: usize) -> PyResult<Vec<f32>> {
+    #[pyo3(signature = (x, y, x_val=None, y_val=None, *, epochs=100, lr=0.01, weight_decay=0.0, early_stopping=false, patience=10))]
+        fn train(
+            &mut self,
+            x: &Bound<'_, PyList>,
+            y: &Bound<'_, PyList>,
+            x_val: Option<&Bound<'_, PyList>>,
+            y_val: Option<&Bound<'_, PyList>>,
+            epochs: usize,
+            lr: f32,
+            weight_decay: f32,
+            early_stopping: bool,
+            patience: usize,
+        ) -> PyResult<Vec<f32>> {
             let x_vec = pylist_to_vec2(x);
             let y_vec = pylist_to_vec2(y);
 
             let x_val_vec = x_val.map(|v| pylist_to_vec2(v));
             let y_val_vec = y_val.map(|v| pylist_to_vec2(v));
 
-            let x_val_ref = x_val_vec.as_ref();
-            let y_val_ref = y_val_vec.as_ref();
-
             let history = self.inner.train(
                 &x_vec,
                 &y_vec,
-                x_val_ref,
-                y_val_ref,
+                x_val_vec.as_ref(),
+                y_val_vec.as_ref(),
                 epochs,
                 lr,
                 weight_decay,
                 early_stopping,
                 patience,
             );
-
             Ok(history)
+
 }
 
     fn predict(&mut self, x: &Bound<'_, PyList>) -> PyResult<Vec<f32>> {

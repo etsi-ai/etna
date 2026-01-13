@@ -21,7 +21,7 @@ pub enum InitStrategy {
 /// Fully connected layer: y = Wx + b
 // Linear Layer (implementing forward, backward, and update)
 
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Linear {
     weights: Vec<Vec<f32>>,
     bias: Vec<f32>,
