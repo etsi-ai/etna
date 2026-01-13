@@ -1,9 +1,6 @@
-// # Layers (Linear, ReLU, Softmax, etc.)
-
-
 use rand::Rng;
-use crate::optimizer::SGD;
 use serde::{Serialize, Deserialize};
+use crate::optimizer::{SGD, Adam};
 
 /// Weight initialization strategy
 /// - Xavier (Glorot): For layers followed by Sigmoid/Softmax. std = sqrt(2 / (n_in + n_out))
@@ -19,17 +16,13 @@ pub enum InitStrategy {
 }
 
 /// Fully connected layer: y = Wx + b
-// Linear Layer (implementing forward, backward, and update)
-
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct Linear {
     weights: Vec<Vec<f32>>,
     bias: Vec<f32>,
-    input_size: usize,
-    output_size: usize,
-    grad_weights: Vec<Vec<f32>>,  // Gradient for weights
-    grad_bias: Vec<f32>,          // Gradient for biases
-    cached_input: Vec<Vec<f32>>,  // Cache input for backward pass
+    grad_weights: Vec<Vec<f32>>,
+    grad_bias: Vec<f32>,
+    cached_input: Vec<Vec<f32>>,
 }
 
 impl Linear {
@@ -42,9 +35,10 @@ impl Linear {
     /// 
     /// # Arguments
     /// * `input_size` - Number of input features
-    /// * `output_size` - Number of output features  
+    /// * `output_size` - Number of output features    
     /// * `init` - Initialization strategy (Xavier, Kaiming, or Legacy)
     pub fn new_with_init(input_size: usize, output_size: usize, init: InitStrategy) -> Self {
+        // UPDATED: Use rand::rng() (replacing thread_rng)
         let mut rng = rand::rng();
         
         let weights = match init {
@@ -73,24 +67,26 @@ impl Linear {
             InitStrategy::Legacy => {
                 // Legacy: uniform random between -0.1 and 0.1
                 (0..output_size)
+                    // UPDATED: Use random_range() (replacing gen_range)
                     .map(|_| (0..input_size).map(|_| rng.random_range(-0.1..0.1)).collect())
                     .collect()
             },
         };
             
-        let bias = vec![0.0; output_size];
-        
         // Initialize gradients as 0.0
-        let grad_weights = vec![vec![0.0; input_size]; output_size];
-        let grad_bias = vec![0.0; output_size];
-        let cached_input = vec![];
-
-        Linear { weights, bias, input_size, output_size, grad_weights, grad_bias, cached_input }
+        Self {
+            weights,
+            bias: vec![0.0; output_size],
+            grad_weights: vec![vec![0.0; input_size]; output_size],
+            grad_bias: vec![0.0; output_size],
+            cached_input: vec![],
+        }
     }
 
     /// Sample from standard normal distribution using Box-Muller transform
     fn sample_normal<R: Rng>(rng: &mut R) -> f32 {
         // Box-Muller transform for normal distribution
+        // UPDATED: Use random_range() (replacing gen_range)
         let u1: f32 = rng.random_range(0.0001..1.0); // Avoid log(0)
         let u2: f32 = rng.random_range(0.0..1.0);
         (-2.0 * u1.ln()).sqrt() * (2.0 * std::f32::consts::PI * u2).cos()
@@ -98,47 +94,37 @@ impl Linear {
 
     pub fn forward(&mut self, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
         self.cached_input = input.clone();
-    
-        input
-            .iter()
-            .map(|x| {
-                self.weights
-                    .iter()
-                    .enumerate()
-                    .map(|(i, w)| {
-                        w.iter()
-                            .zip(x.iter())
-                            .map(|(w_val, x_val)| w_val * x_val)
-                            .sum::<f32>()
-                            + self.bias[i]
-                    })
-                    .collect::<Vec<f32>>()
-            })
-            .collect()
+
+        input.iter().map(|x| {
+            self.weights.iter().enumerate().map(|(i, w)| {
+                w.iter().zip(x.iter()).map(|(w, x)| w * x).sum::<f32>() + self.bias[i]
+            }).collect()
+        }).collect()
     }
-    
 
-    pub fn backward(&mut self, grad_output: &Vec<Vec<f32>>, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
-        let mut grad_input = vec![vec![0.0; self.input_size]; input.len()];
+    pub fn backward(&mut self, grad_output: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        let batch_size = self.cached_input.len();
+        let input_size = self.cached_input[0].len();
 
-        // Compute gradients for weights and biases
-        for (i, grad) in grad_output.iter().enumerate() {
-            for (j, grad_val) in grad.iter().enumerate() {
-                self.grad_bias[j] += grad_val; // Sum gradients for bias
-                for (k, &input_val) in input[i].iter().enumerate() {
-                    self.grad_weights[j][k] += grad_val * input_val; // Gradient for weights
-                    grad_input[i][k] += grad_val * self.weights[j][k]; // Gradient for input
+        let mut grad_input = vec![vec![0.0; input_size]; batch_size];
+
+        for i in 0..batch_size {
+            for j in 0..self.weights.len() {
+                self.grad_bias[j] += grad_output[i][j];
+                for k in 0..input_size {
+                    self.grad_weights[j][k] += grad_output[i][j] * self.cached_input[i][k];
+                    grad_input[i][k] += grad_output[i][j] * self.weights[j][k];
                 }
             }
         }
         grad_input
     }
 
-    pub fn update(&mut self, optimizer: &mut SGD) {
-        for i in 0..self.output_size {
-            for j in 0..self.input_size {
+    /// Update weights using SGD
+    pub fn update_sgd(&mut self, optimizer: &SGD) {
+        for i in 0..self.weights.len() {
+            for j in 0..self.weights[0].len() {
                 // L2 regularization: add lambda * weight to gradient
-                // grad_total = grad_loss + lambda * weight
                 let l2_term = optimizer.weight_decay * self.weights[i][j];
                 self.weights[i][j] -= optimizer.learning_rate * (self.grad_weights[i][j] + l2_term);
                 self.grad_weights[i][j] = 0.0;
@@ -148,8 +134,26 @@ impl Linear {
             self.grad_bias[i] = 0.0;
         }
     }
+
+    /// Update weights using Adam
+    pub fn update_adam(&mut self, optimizer: &mut Adam) {
+        // Use Adam's step method which handles the update internally
+        optimizer.step(
+            &mut self.weights,
+            &self.grad_weights,
+            &mut self.bias,
+            &self.grad_bias,
+        );
+
+        // Clear gradients after update
+        self.grad_weights.iter_mut().for_each(|r| r.iter_mut().for_each(|v| *v = 0.0));
+        self.grad_bias.iter_mut().for_each(|v| *v = 0.0);
+    }
 }
 
+/// =======================
+/// ReLU
+/// =======================
 #[derive(Serialize, Deserialize)]
 pub struct ReLU;
 
@@ -158,32 +162,17 @@ impl ReLU {
         input.iter().map(|x| x.iter().map(|&v| v.max(0.0)).collect()).collect()
     }
 
-    pub fn backward(grad_output: &Vec<Vec<f32>>, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
-        grad_output.iter().zip(input.iter())
-            .map(|(grad, in_val)| grad.iter().zip(in_val.iter()).map(|(g, i)| if *i > 0.0 { *g } else { 0.0 }).collect())
+    pub fn backward(grad: &Vec<Vec<f32>>, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        grad.iter().zip(input.iter())
+            .map(|(g, i)| g.iter().zip(i.iter()).map(|(g, v)| if *v > 0.0 { *g } else { 0.0 }).collect())
             .collect()
     }
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct Softmax;
-
-impl Softmax {
-    pub fn forward(logits: &Vec<f32>) -> Vec<f32> {
-        let max_val = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-        let exp_vals: Vec<f32> = logits.iter().map(|x| (x - max_val).exp()).collect();
-        let sum_exp: f32 = exp_vals.iter().sum();
-        exp_vals.iter().map(|x| x / sum_exp).collect()
-    }
-
-    pub fn backward(preds: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
-        preds.iter().zip(y.iter())
-            .map(|(p, t)| p.iter().zip(t.iter()).map(|(a, b)| a - b).collect())
-            .collect()
-    }    
-}
-
+/// =======================
+/// Leaky ReLU
 /// Leaky ReLU activation: max(0.01 * x, x)
+/// =======================
 #[derive(Serialize, Deserialize)]
 pub struct LeakyReLU;
 
@@ -191,48 +180,43 @@ impl LeakyReLU {
     const ALPHA: f32 = 0.01;
 
     pub fn forward(input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
-        input.iter()
-            .map(|x| x.iter().map(|&v| if v > 0.0 { v } else { Self::ALPHA * v }).collect())
-            .collect()
+        input.iter().map(|x| {
+            x.iter().map(|&v| if v > 0.0 { v } else { Self::ALPHA * v }).collect()
+        }).collect()
     }
 
-    pub fn backward(grad_output: &Vec<Vec<f32>>, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
-        grad_output.iter().zip(input.iter())
-            .map(|(grad, in_val)| {
-                grad.iter().zip(in_val.iter())
-                    .map(|(g, i)| if *i > 0.0 { *g } else { Self::ALPHA * *g })
-                    .collect()
-            })
+    pub fn backward(grad: &Vec<Vec<f32>>, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        grad.iter().zip(input.iter())
+            .map(|(g, i)| g.iter().zip(i.iter())
+                .map(|(g, v)| if *v > 0.0 { *g } else { Self::ALPHA * *g })
+                .collect())
             .collect()
     }
 }
 
-/// Sigmoid activation: 1 / (1 + e^(-x))
+/// =======================
+/// Sigmoid
+/// =======================
 #[derive(Serialize, Deserialize)]
 pub struct Sigmoid;
 
 impl Sigmoid {
     pub fn forward(input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
-        input.iter()
-            .map(|x| x.iter().map(|&v| 1.0 / (1.0 + (-v).exp())).collect())
-            .collect()
+        input.iter().map(|x| {
+            x.iter().map(|&v| 1.0 / (1.0 + (-v).exp())).collect()
+        }).collect()
     }
 
-    /// Backward pass for Sigmoid
-    /// Derivative: sigmoid(x) * (1 - sigmoid(x))
-    /// For efficiency, we use the output of forward pass: output * (1 - output)
-    pub fn backward(grad_output: &Vec<Vec<f32>>, sigmoid_output: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
-        grad_output.iter().zip(sigmoid_output.iter())
-            .map(|(grad, out)| {
-                grad.iter().zip(out.iter())
-                    .map(|(g, o)| g * o * (1.0 - o))
-                    .collect()
-            })
+    pub fn backward(grad: &Vec<Vec<f32>>, out: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        grad.iter().zip(out.iter())
+            .map(|(g, o)| g.iter().zip(o.iter()).map(|(g_val, o_val)| g_val * o_val * (1.0 - o_val)).collect())
             .collect()
     }
 }
 
-/// Configurable activation function enum
+/// =======================
+/// Activation Enum
+/// =======================
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub enum Activation {
     ReLU,
@@ -241,27 +225,19 @@ pub enum Activation {
 }
 
 impl Activation {
-    /// Apply forward pass using the selected activation
     pub fn forward(&self, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
         match self {
-            Activation::ReLU => ReLU::forward(input),
-            Activation::LeakyReLU => LeakyReLU::forward(input),
-            Activation::Sigmoid => Sigmoid::forward(input),
+            Self::ReLU => ReLU::forward(input),
+            Self::LeakyReLU => LeakyReLU::forward(input),
+            Self::Sigmoid => Sigmoid::forward(input),
         }
     }
 
-    /// Apply backward pass using the selected activation
-    /// For Sigmoid, pass the cached output from forward pass
-    pub fn backward(&self, grad_output: &Vec<Vec<f32>>, input_or_output: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+    pub fn backward(&self, grad: &Vec<Vec<f32>>, cache: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
         match self {
-            Activation::ReLU => ReLU::backward(grad_output, input_or_output),
-            Activation::LeakyReLU => LeakyReLU::backward(grad_output, input_or_output),
-            Activation::Sigmoid => {
-                // For sigmoid, we need to pass the output, not input
-                // But since the backward is called with hidden_cache which is the output of forward,
-                // we can use it directly
-                Sigmoid::backward(grad_output, input_or_output)
-            },
+            Self::ReLU => ReLU::backward(grad, cache),
+            Self::LeakyReLU => LeakyReLU::backward(grad, cache),
+            Self::Sigmoid => Sigmoid::backward(grad, cache),
         }
     }
 
@@ -275,7 +251,6 @@ impl Activation {
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
