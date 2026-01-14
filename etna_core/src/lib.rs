@@ -12,8 +12,12 @@ mod utils;
 use pyo3::prelude::*;
 use pyo3::types::PyList;
 
-use crate::model::{SimpleNN, OptimizerType};
+
 use crate::layers::Activation;
+use crate::model::SimpleNN;
+use crate::model::OptimizerType;
+
+
 
 /// Helper: Convert Python list to Rust Vec<Vec<f32>>
 fn pylist_to_vec2(pylist: &Bound<'_, PyList>) -> Vec<Vec<f32>> {
@@ -51,20 +55,40 @@ impl EtnaModel {
         }
     }
 
-    #[pyo3(signature = (x, y, epochs, lr, weight_decay=0.0, optimizer="sgd"))]
-    fn train(&mut self, x: &Bound<'_, PyList>, y: &Bound<'_, PyList>, epochs: usize, lr: f32, weight_decay: f32, optimizer: &str) -> PyResult<Vec<f32>> {
+    #[pyo3(signature = (x, y, epochs, lr, batch_size=32, weight_decay=0.0, optimizer="sgd"))]
+        fn train(
+            &mut self,
+            x: &Bound<'_, PyList>,
+            y: &Bound<'_, PyList>,
+            epochs: usize,
+            lr: f32,
+            batch_size: usize,
+            weight_decay: f32,
+            optimizer: &str,
+        ) -> PyResult<Vec<f32>> {
+
         let x_vec = pylist_to_vec2(x);
         let y_vec = pylist_to_vec2(y);
-
-        // Parse optimizer string (default to SGD if not specified or invalid)
         let optimizer_type = match optimizer {
             "adam" => OptimizerType::Adam,
-            _ => OptimizerType::SGD,  // Default to SGD for backward compatibility
+            _ => OptimizerType::SGD,
         };
 
+
+
         // Capture the history returned by Rust
-        let history = self.inner.train(&x_vec, &y_vec, epochs, lr, weight_decay, optimizer_type);
-        
+    let history = self.inner.train(
+        &x_vec,
+        &y_vec,
+        epochs,
+        lr,
+        weight_decay,
+        optimizer_type,
+        batch_size,
+    );
+
+
+            
         // Return it to Python
         Ok(history)
     }
@@ -90,8 +114,8 @@ impl EtnaModel {
     }
 }
 
-#[pymodule]
-fn _etna_rust(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<EtnaModel>()?;
-    Ok(())
-}
+    #[pymodule]
+    fn _etna_rust(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
+        m.add_class::<EtnaModel>()?;
+        Ok(())
+    }

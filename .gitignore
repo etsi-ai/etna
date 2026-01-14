@@ -24,8 +24,7 @@ venv/
 *.swp
 
 # --- Project Specific (Temporary Test Data) ---
-dummy_data.csv
-dummy_reg.csv
+*.csv
 .ipynb_checkpoints/
 
 # --- MLflow & Tracking ---
@@ -40,3 +39,5 @@ mlflow.db
 *.ckpt
 *_model.json
 *_regressor.json
+
+
