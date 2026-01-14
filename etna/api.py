@@ -135,11 +135,19 @@ class Model:
             
             # Calculate validation loss if validation split is enabled
             if validation_split > 0.0 and len(X_val) > 0:
-                val_loss = self._calculate_validation_loss(X_val, y_val)
-                val_losses.append(val_loss)
-                
-                if epoch % 10 == 0:
-                    print(f"Epoch {epoch}/{epochs} - Train Loss: {epoch_losses[0]:.4f}, Val Loss: {val_loss:.4f}")
+                # Skip validation if we have too few samples (less than 1)
+                if len(X_val) >= 1:
+                    val_loss = self._calculate_validation_loss(X_val, y_val)
+                    val_losses.append(val_loss)
+                    
+                    if epoch % 10 == 0:
+                        if np.isfinite(val_loss):
+                            print(f"Epoch {epoch}/{epochs} - Train Loss: {epoch_losses[0]:.4f}, Val Loss: {val_loss:.4f}")
+                        else:
+                            print(f"Epoch {epoch}/{epochs} - Train Loss: {epoch_losses[0]:.4f}, Val Loss: N/A (calculation failed)")
+                else:
+                    # Not enough validation samples, skip validation loss
+                    val_losses.append(float('inf'))
             else:
                 if epoch % 10 == 0:
                     print(f"Epoch {epoch}/{epochs} - Loss: {epoch_losses[0]:.4f}")
@@ -161,17 +169,60 @@ class Model:
         Returns:
             Validation loss value
         """
-        # Get raw forward outputs (probabilities for classification, values for regression)
-        X_val_list = X_val.tolist() if isinstance(X_val, np.ndarray) else X_val
-        y_val_list = y_val.tolist() if isinstance(y_val, np.ndarray) else y_val
+        # Ensure we have validation data
+        if len(X_val) == 0 or len(y_val) == 0:
+            return float('inf')
+        
+        # Convert to list format expected by Rust
+        # X_val and y_val are already lists from preprocessing, but ensure proper format
+        if isinstance(X_val, np.ndarray):
+            X_val_list = X_val.tolist()
+        elif isinstance(X_val, list):
+            X_val_list = X_val
+        else:
+            X_val_list = list(X_val)
+            
+        if isinstance(y_val, np.ndarray):
+            y_val_list = y_val.tolist()
+        elif isinstance(y_val, list):
+            y_val_list = y_val
+        else:
+            y_val_list = list(y_val)
+        
+        # Ensure X_val_list is a list of lists (even for single sample)
+        if len(X_val_list) > 0 and not isinstance(X_val_list[0], list):
+            X_val_list = [X_val_list]
+        
+        # Ensure y_val_list is a list of lists (even for single sample)
+        if len(y_val_list) > 0 and not isinstance(y_val_list[0], list):
+            y_val_list = [y_val_list]
         
         # Get raw outputs from model
-        raw_outputs = self.rust_model.forward(X_val_list)
+        try:
+            raw_outputs = self.rust_model.forward(X_val_list)
+        except Exception as e:
+            # If forward fails, return a high loss value
+            print(f"⚠️  Warning: Forward pass failed during validation: {e}")
+            return float('inf')
+        
+        # Validate that we got predictions
+        if not raw_outputs or len(raw_outputs) == 0:
+            print(f"⚠️  Warning: Forward pass returned empty predictions for {len(X_val_list)} validation samples")
+            return float('inf')
+        
+        if len(raw_outputs) != len(y_val_list):
+            print(f"⚠️  Warning: Mismatch between predictions ({len(raw_outputs)}) and targets ({len(y_val_list)})")
+            return float('inf')
         
         if self.task_type == "classification":
             # For classification, use cross-entropy loss
             # y_val is already one-hot encoded from preprocessing
-            loss = CrossEntropyLoss.calculate(y_val_list, raw_outputs)
+            try:
+                loss = CrossEntropyLoss.calculate(y_val_list, raw_outputs)
+            except ValueError as e:
+                # Handle shape mismatches gracefully
+                print(f"⚠️  Warning: Cross-entropy calculation failed: {e}")
+                return float('inf')
         else:
             # For regression, use MSE
             # y_val is a list of lists (one value per sample)
@@ -189,8 +240,13 @@ class Model:
                 raw_outputs_flat = raw_outputs_array.flatten()
             else:
                 raw_outputs_flat = raw_outputs_array
+            
+            # Ensure same length
+            min_len = min(len(y_val_flat), len(raw_outputs_flat))
+            if min_len == 0:
+                return float('inf')
                 
-            loss = float(np.mean((y_val_flat - raw_outputs_flat) ** 2))
+            loss = float(np.mean((y_val_flat[:min_len] - raw_outputs_flat[:min_len]) ** 2))
         
         return loss
 
