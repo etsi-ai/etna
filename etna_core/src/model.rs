@@ -1,19 +1,18 @@
 // Model training / prediction logic
 // Implements a simple 2-layer neural network with mandatory mini-batch training
 
-use crate::layers::{Linear, Activation, InitStrategy};
-use crate::softmax::Softmax;
+use crate::layers::{Activation, InitStrategy, Linear};
 use crate::loss_function::{cross_entropy, mse};
-use crate::optimizer::{SGD, Adam};
+use crate::optimizer::{Adam, SGD};
+use crate::softmax::Softmax;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::fs::File;
-use std::io::{Write, Read};
+use std::io::{Read, Write};
 
 // Required for shuffling training data each epoch
-use rand::seq::SliceRandom;
 use rand::rng;
-
+use rand::seq::SliceRandom;
 
 #[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum TaskType {
@@ -78,10 +77,7 @@ impl SimpleNN {
         let logits = self.linear2.forward(&hidden_post);
 
         let output = match self.task_type {
-            TaskType::Classification => logits
-                .iter()
-                .map(|l| Softmax::forward(l))
-                .collect(),
+            TaskType::Classification => logits.iter().map(|l| Softmax::forward(l)).collect(),
             TaskType::Regression => logits.clone(),
         };
 
@@ -141,20 +137,17 @@ impl SimpleNN {
             let mut indices: Vec<usize> = (0..x.len()).collect();
             indices.shuffle(&mut rng());
 
-
             let mut epoch_loss = 0.0;
             let mut batch_count = 0;
 
-           // Iterate over shuffled data using fixed-size mini-batches
+            // Iterate over shuffled data using fixed-size mini-batches
 
             for batch_start in (0..x.len()).step_by(batch_size) {
                 let batch_end = (batch_start + batch_size).min(x.len());
                 let batch_indices = &indices[batch_start..batch_end];
 
-                let x_batch: Vec<Vec<f32>> =
-                    batch_indices.iter().map(|&i| x[i].clone()).collect();
-                let y_batch: Vec<Vec<f32>> =
-                    batch_indices.iter().map(|&i| y[i].clone()).collect();
+                let x_batch: Vec<Vec<f32>> = batch_indices.iter().map(|&i| x[i].clone()).collect();
+                let y_batch: Vec<Vec<f32>> = batch_indices.iter().map(|&i| y[i].clone()).collect();
 
                 let preds = self.forward(&x_batch);
 
@@ -170,11 +163,7 @@ impl SimpleNN {
                             .iter()
                             .zip(y_batch.iter())
                             .map(|(p_row, y_row)| {
-                                p_row
-                                    .iter()
-                                    .zip(y_row.iter())
-                                    .map(|(p, t)| p - t)
-                                    .collect()
+                                p_row.iter().zip(y_row.iter()).map(|(p, t)| p - t).collect()
                             })
                             .collect();
                         (loss_val, grad)
@@ -183,8 +172,7 @@ impl SimpleNN {
 
                 // ---- Backward pass ----
                 let grad_linear2 = self.linear2.backward(&grad_output);
-                let grad_activation =
-                    self.activation.backward(&grad_linear2, &self.hidden_cache);
+                let grad_activation = self.activation.backward(&grad_linear2, &self.hidden_cache);
                 let _grad_linear1 = self.linear1.backward(&grad_activation);
 
                 // ---- Parameter update ----
@@ -215,10 +203,7 @@ impl SimpleNN {
             loss_history.push(avg_loss);
 
             if epoch % 10 == 0 {
-                println!(
-                    "Epoch {}/{} - Loss: {:.4}",
-                    epoch, epochs, avg_loss
-                );
+                println!("Epoch {}/{} - Loss: {:.4}", epoch, epochs, avg_loss);
             }
         }
 
@@ -259,11 +244,23 @@ impl SimpleNN {
         let model: SimpleNN = serde_json::from_str(&contents)?;
         Ok(model)
     }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
+    /// Verifies that mini-batch training reduces loss over time.
+    ///
+    /// This test uses a tiny XOR-like dataset and ensures that
+    /// average training loss decreases when using mini-batches.
     #[test]
     fn training_loss_decreases_with_minibatch() {
         let mut model = SimpleNN::new(
-            2, 4, 1, 1, Activation::ReLU
+            2, // input_dim
+            4, // hidden_dim
+            1, // output_dim
+            1, // regression task
+            Activation::ReLU,
         );
 
         let x = vec![
@@ -273,23 +270,22 @@ impl SimpleNN {
             vec![1.0, 1.0],
         ];
 
-        let y = vec![
-            vec![0.0],
-            vec![1.0],
-            vec![1.0],
-            vec![0.0],
-        ];
+        let y = vec![vec![0.0], vec![1.0], vec![1.0], vec![0.0]];
 
         let losses = model.train(
             &x,
             &y,
-            50,
-            0.1,
-            0.0,
-            OptimizerType::SGD,
-            2, // batch_size
+            50,                 // epochs
+            0.1,                // learning rate
+            0.0,                // weight decay
+            OptimizerType::SGD, // optimizer
+            2,                  // batch size
         );
 
-    assert!(losses.last().unwrap() < losses.first().unwrap());
+        // Ensure training progresses in the right direction
+        assert!(
+            losses.last().unwrap() < losses.first().unwrap(),
+            "Expected training loss to decrease with mini-batch training"
+        );
     }
 }
