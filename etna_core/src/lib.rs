@@ -1,6 +1,5 @@
 // Rust-Python bridge (pyo3)
 
-#![allow(dead_code)]
 
 mod model;
 mod layers;
