@@ -1,10 +1,9 @@
 // Model training / prediction logic
 // Implements a simple 2-layer neural network with mandatory mini-batch training
 
-use crate::layers::{Activation, InitStrategy, Linear};
+use crate::layers::{Activation, InitStrategy, Linear, Layer, LayerWrapper, ActivationLayer, SoftmaxLayer};
 use crate::loss_function::{cross_entropy, mse};
 use crate::optimizer::{Adam, SGD};
-use crate::softmax::Softmax;
 
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -28,16 +27,13 @@ pub enum OptimizerType {
 
 #[derive(Serialize, Deserialize)]
 pub struct SimpleNN {
-    linear1: Linear,
-    activation: Activation,
-    linear2: Linear,
+    layers: Vec<LayerWrapper>,
     task_type: TaskType,
+}
 
-    // Caches used during backpropagation
-    input_cache: Vec<Vec<f32>>,
-    hidden_cache: Vec<Vec<f32>>,
-    logits_cache: Vec<Vec<f32>>,
-    probs_cache: Vec<Vec<f32>>,
+enum LayerOptimizer {
+    SGD(SGD),
+    Adam(Adam),
 }
 
 impl SimpleNN {
@@ -58,36 +54,32 @@ impl SimpleNN {
         let hidden_init = activation.init_strategy();
         let output_init = InitStrategy::Xavier;
 
+        let mut layers = vec![
+            LayerWrapper::Linear(Linear::new_with_init(input_dim, hidden_dim, hidden_init)),
+            LayerWrapper::Activation(ActivationLayer::new(activation)),
+            LayerWrapper::Linear(Linear::new_with_init(hidden_dim, output_dim, output_init)),
+        ];
+
+        // Only apply Softmax for Classification
+        if task_type == TaskType::Classification {
+            layers.push(LayerWrapper::Softmax(SoftmaxLayer::new()));
+        }
+
         Self {
-            linear1: Linear::new_with_init(input_dim, hidden_dim, hidden_init),
-            activation,
-            linear2: Linear::new_with_init(hidden_dim, output_dim, output_init),
+            layers,
             task_type,
-            input_cache: vec![],
-            hidden_cache: vec![],
-            logits_cache: vec![],
-            probs_cache: vec![],
         }
     }
 
     /// Forward pass (used by both training and prediction)
     pub fn forward(&mut self, x: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
-        let hidden_pre = self.linear1.forward(x);
-        let hidden_post = self.activation.forward(&hidden_pre);
-        let logits = self.linear2.forward(&hidden_post);
-
-        let output = match self.task_type {
-            TaskType::Classification => logits.iter().map(|l| Softmax::forward(l)).collect(),
-            TaskType::Regression => logits.clone(),
-        };
-
-        // Cache values needed for backprop
-        self.input_cache = x.clone();
-        self.hidden_cache = hidden_post;
-        self.logits_cache = logits;
-        self.probs_cache = output.clone();
-
-        output
+        let mut current_input = x.clone();
+        
+        for layer in &mut self.layers {
+            current_input = layer.forward(&current_input);
+        }
+        
+        current_input
     }
 
     /// Train the network using mandatory mini-batch training
@@ -103,34 +95,21 @@ impl SimpleNN {
     ) -> Vec<f32> {
         let mut loss_history = Vec::new();
 
-        // Separate optimizers per layer (important for Adam state)
-        let mut sgd_l1 = match optimizer_type {
-            OptimizerType::SGD => Some(if weight_decay > 0.0 {
-                SGD::with_weight_decay(lr, weight_decay)
+        // Create optimizers for each layer in the stack
+        let mut layer_optimizers: Vec<Option<LayerOptimizer>> = self.layers.iter().map(|l| {
+            if let LayerWrapper::Linear(_) = l {
+                match optimizer_type {
+                    OptimizerType::SGD => Some(LayerOptimizer::SGD(if weight_decay > 0.0 {
+                        SGD::with_weight_decay(lr, weight_decay)
+                    } else {
+                        SGD::new(lr)
+                    })),
+                    OptimizerType::Adam => Some(LayerOptimizer::Adam(Adam::new(lr, 0.9, 0.999, 1e-8))),
+                }
             } else {
-                SGD::new(lr)
-            }),
-            OptimizerType::Adam => None,
-        };
-
-        let mut sgd_l2 = match optimizer_type {
-            OptimizerType::SGD => Some(if weight_decay > 0.0 {
-                SGD::with_weight_decay(lr, weight_decay)
-            } else {
-                SGD::new(lr)
-            }),
-            OptimizerType::Adam => None,
-        };
-
-        let mut adam_l1 = match optimizer_type {
-            OptimizerType::SGD => None,
-            OptimizerType::Adam => Some(Adam::new(lr, 0.9, 0.999, 1e-8)),
-        };
-
-        let mut adam_l2 = match optimizer_type {
-            OptimizerType::SGD => None,
-            OptimizerType::Adam => Some(Adam::new(lr, 0.9, 0.999, 1e-8)),
-        };
+                None
+            }
+        }).collect();
 
         for epoch in 0..epochs {
             // ---- Shuffle data at the start of each epoch ----
@@ -154,43 +133,32 @@ impl SimpleNN {
                 let (loss, grad_output) = match self.task_type {
                     TaskType::Classification => {
                         let loss_val = cross_entropy(&preds, &y_batch);
-                        let grad = Softmax::backward(&preds, &y_batch);
-                        (loss_val, grad)
+                        // For classification, the last layer is Softmax,
+                        // which expects targets for backward pass to compute (preds - target)
+                        (loss_val, y_batch)
                     }
                     TaskType::Regression => {
                         let loss_val = mse(&preds, &y_batch);
-                        let grad = preds
-                            .iter()
-                            .zip(y_batch.iter())
-                            .map(|(p_row, y_row)| {
-                                p_row.iter().zip(y_row.iter()).map(|(p, t)| p - t).collect()
-                            })
+                        // For regression, dL/dpreds = preds - target
+                        let grad = preds.iter().zip(y_batch.iter())
+                            .map(|(p_row, y_row)| p_row.iter().zip(y_row.iter()).map(|(p, t)| p - t).collect())
                             .collect();
                         (loss_val, grad)
                     }
                 };
 
-                // ---- Backward pass ----
-                let grad_linear2 = self.linear2.backward(&grad_output);
-                let grad_activation = self.activation.backward(&grad_linear2, &self.hidden_cache);
-                let _grad_linear1 = self.linear1.backward(&grad_activation);
+                // ---- Backward pass (Reverse iteration) ----
+                let mut current_grad = grad_output;
+                for layer in self.layers.iter_mut().rev() {
+                    current_grad = layer.backward(&current_grad);
+                }
 
                 // ---- Parameter update ----
-                match optimizer_type {
-                    OptimizerType::SGD => {
-                        if let Some(ref mut opt) = sgd_l1 {
-                            self.linear1.update_sgd(opt);
-                        }
-                        if let Some(ref mut opt) = sgd_l2 {
-                            self.linear2.update_sgd(opt);
-                        }
-                    }
-                    OptimizerType::Adam => {
-                        if let Some(ref mut opt) = adam_l1 {
-                            self.linear1.update_adam(opt);
-                        }
-                        if let Some(ref mut opt) = adam_l2 {
-                            self.linear2.update_adam(opt);
+                for (layer, opt) in self.layers.iter_mut().zip(layer_optimizers.iter_mut()) {
+                    if let Some(ref mut o) = opt {
+                        match o {
+                            LayerOptimizer::SGD(s) => layer.update_sgd(s),
+                            LayerOptimizer::Adam(a) => layer.update_adam(a),
                         }
                     }
                 }

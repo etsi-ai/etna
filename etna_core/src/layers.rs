@@ -1,6 +1,7 @@
 use rand::Rng;
 use serde::{Serialize, Deserialize};
 use crate::optimizer::{SGD, Adam};
+use crate::softmax::Softmax;
 
 /// Weight initialization strategy
 /// - Xavier (Glorot): For layers followed by Sigmoid/Softmax. std = sqrt(2 / (n_in + n_out))
@@ -11,6 +12,21 @@ pub enum InitStrategy {
     Xavier,
     /// Kaiming/He initialization - best for ReLU, LeakyReLU
     Kaiming,
+}
+
+/// Unified trait for all model layers
+pub trait Layer {
+    /// Forward pass through the layer
+    fn forward(&mut self, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>>;
+    
+    /// Backward pass through the layer (backpropagation)
+    fn backward(&mut self, grad_output: &Vec<Vec<f32>>) -> Vec<Vec<f32>>;
+    
+    /// Update layer parameters using SGD
+    fn update_sgd(&mut self, _optimizer: &SGD) {}
+    
+    /// Update layer parameters using Adam
+    fn update_adam(&mut self, _optimizer: &mut Adam) {}
 }
 
 /// Fully connected layer: y = Wx + b
@@ -139,6 +155,24 @@ impl Linear {
     }
 }
 
+impl Layer for Linear {
+    fn forward(&mut self, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        self.forward(input)
+    }
+
+    fn backward(&mut self, grad_output: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        self.backward(grad_output)
+    }
+
+    fn update_sgd(&mut self, optimizer: &SGD) {
+        self.update_sgd(optimizer)
+    }
+
+    fn update_adam(&mut self, optimizer: &mut Adam) {
+        self.update_adam(optimizer)
+    }
+}
+
 /// =======================
 /// ReLU
 /// =======================
@@ -236,6 +270,103 @@ impl Activation {
         match self {
             Activation::ReLU | Activation::LeakyReLU => InitStrategy::Kaiming,
             Activation::Sigmoid => InitStrategy::Xavier,
+        }
+    }
+}
+
+/// Wrapper for activations to implement the Layer trait
+#[derive(Serialize, Deserialize)]
+pub struct ActivationLayer {
+    pub activation: Activation,
+    cached_data: Vec<Vec<f32>>,
+}
+
+impl ActivationLayer {
+    pub fn new(activation: Activation) -> Self {
+        Self {
+            activation,
+            cached_data: vec![],
+        }
+    }
+}
+
+impl Layer for ActivationLayer {
+    fn forward(&mut self, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        let output = self.activation.forward(input);
+        // Sigmoid backward needs output, ReLU/LeakyReLU need input
+        match self.activation {
+            Activation::Sigmoid => self.cached_data = output.clone(),
+            _ => self.cached_data = input.clone(),
+        }
+        output
+    }
+
+    fn backward(&mut self, grad_output: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        self.activation.backward(grad_output, &self.cached_data)
+    }
+}
+
+/// Wrapper for Softmax to implement the Layer trait
+#[derive(Serialize, Deserialize, Default)]
+pub struct SoftmaxLayer {
+    cached_output: Vec<Vec<f32>>,
+}
+
+impl SoftmaxLayer {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Layer for SoftmaxLayer {
+    fn forward(&mut self, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        let output = input.iter().map(|l| Softmax::forward(l)).collect();
+        self.cached_output = output;
+        self.cached_output.clone()
+    }
+
+    fn backward(&mut self, grad_output: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        // Note: For the output layer, grad_output is expected to be the targets (Y)
+        // due to the specific implementation of Softmax::backward returning (preds - targets)
+        Softmax::backward(&self.cached_output, grad_output)
+    }
+}
+
+/// Polymorphic wrapper for all layer types to support serialization
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum LayerWrapper {
+    Linear(Linear),
+    Activation(ActivationLayer),
+    Softmax(SoftmaxLayer),
+}
+
+impl Layer for LayerWrapper {
+    fn forward(&mut self, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        match self {
+            Self::Linear(l) => l.forward(input),
+            Self::Activation(a) => a.forward(input),
+            Self::Softmax(s) => s.forward(input),
+        }
+    }
+
+    fn backward(&mut self, grad_output: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        match self {
+            Self::Linear(l) => l.backward(grad_output),
+            Self::Activation(a) => a.backward(grad_output),
+            Self::Softmax(s) => s.backward(grad_output),
+        }
+    }
+
+    fn update_sgd(&mut self, optimizer: &SGD) {
+        if let Self::Linear(l) = self {
+            l.update_sgd(optimizer);
+        }
+    }
+
+    fn update_adam(&mut self, optimizer: &mut Adam) {
+        if let Self::Linear(l) = self {
+            l.update_adam(optimizer);
         }
     }
 }
