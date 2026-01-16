@@ -29,6 +29,8 @@ pub enum OptimizerType {
 pub struct SimpleNN {
     layers: Vec<LayerWrapper>,
     task_type: TaskType,
+    #[serde(skip)] // Optimizers are typically reset on load/save
+    optimizers: Vec<Option<LayerOptimizer>>,
 }
 
 enum LayerOptimizer {
@@ -68,17 +70,18 @@ impl SimpleNN {
         Self {
             layers,
             task_type,
+            optimizers: vec![],
         }
     }
 
     /// Forward pass (used by both training and prediction)
     pub fn forward(&mut self, x: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
         let mut current_input = x.clone();
-        
+
         for layer in &mut self.layers {
             current_input = layer.forward(&current_input);
         }
-        
+
         current_input
     }
 
@@ -95,21 +98,23 @@ impl SimpleNN {
     ) -> Vec<f32> {
         let mut loss_history = Vec::new();
 
-        // Create optimizers for each layer in the stack
-        let mut layer_optimizers: Vec<Option<LayerOptimizer>> = self.layers.iter().map(|l| {
-            if let LayerWrapper::Linear(_) = l {
-                match optimizer_type {
-                    OptimizerType::SGD => Some(LayerOptimizer::SGD(if weight_decay > 0.0 {
-                        SGD::with_weight_decay(lr, weight_decay)
-                    } else {
-                        SGD::new(lr)
-                    })),
-                    OptimizerType::Adam => Some(LayerOptimizer::Adam(Adam::new(lr, 0.9, 0.999, 1e-8))),
+        // Initialize optimizers ONLY if they don't exist yet
+        if self.optimizers.is_empty() {
+            self.optimizers = self.layers.iter().map(|l| {
+                if let LayerWrapper::Linear(_) = l {
+                    match optimizer_type {
+                        OptimizerType::SGD => Some(LayerOptimizer::SGD(if weight_decay > 0.0 {
+                            SGD::with_weight_decay(lr, weight_decay)
+                        } else {
+                            SGD::new(lr)
+                        })),
+                        OptimizerType::Adam => Some(LayerOptimizer::Adam(Adam::new(lr, 0.9, 0.999, 1e-8))),
+                    }
+                } else {
+                    None
                 }
-            } else {
-                None
-            }
-        }).collect();
+            }).collect();
+        }
 
         for epoch in 0..epochs {
             // ---- Shuffle data at the start of each epoch ----
@@ -154,7 +159,7 @@ impl SimpleNN {
                 }
 
                 // ---- Parameter update ----
-                for (layer, opt) in self.layers.iter_mut().zip(layer_optimizers.iter_mut()) {
+                for (layer, opt) in self.layers.iter_mut().zip(self.optimizers.iter_mut()) {
                     if let Some(ref mut o) = opt {
                         match o {
                             LayerOptimizer::SGD(s) => layer.update_sgd(s),

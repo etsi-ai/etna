@@ -17,7 +17,7 @@ except ImportError:
 
 
 class Model:
-    def __init__(self, file_path: str, target: str, task_type: str = None):
+    def __init__(self, file_path: str, target: str, task_type: str = None, hidden_dim: int = 16, activation: str = "relu"):
         """
         Initializes the ETNA model.
         Args:
@@ -29,6 +29,10 @@ class Model:
         self.target = target
         self.df = load_data(file_path)
         self.loss_history = []
+
+        # Store architecture parameters
+        self.hidden_dim = hidden_dim
+        self.activation = activation
 
         # Determine task type
         if task_type:
@@ -76,12 +80,11 @@ class Model:
 
         print("⚙️  Preprocessing data...")
         X, y = self.preprocessor.fit_transform(self.df, self.target)
-        
+
         # Cache training data for predict() without arguments
         self._cached_X = np.array(X)
 
         self.input_dim = len(X[0])
-        self.hidden_dim = 16
         self.output_dim = self.preprocessor.output_dim
 
         optimizer_lower = optimizer.lower()
@@ -91,7 +94,13 @@ class Model:
         # LOGICAL FIX: Only initialize if model doesn't exist (supports incremental training)
         if self.rust_model is None:
             print(f"🚀 Initializing Rust Core [In: {self.input_dim}, Out: {self.output_dim}]...")
-            self.rust_model = _etna_rust.EtnaModel(self.input_dim, self.hidden_dim, self.output_dim, self.task_code)
+            self.rust_model = _etna_rust.EtnaModel(
+                self.input_dim,
+                self.hidden_dim,
+                self.output_dim,
+                self.task_code,
+                self.activation
+            )
         else:
             print(f"🔄 Resuming training on existing Core [In: {self.input_dim}, Out: {self.output_dim}]...")
 
@@ -111,11 +120,11 @@ class Model:
     def predict(self, data_path: str = None):
         """
         Make predictions.
-        
+
         Args:
-            data_path: Optional path to CSV file. If not provided, uses the 
+            data_path: Optional path to CSV file. If not provided, uses the
                        training data (useful for evaluating on training set).
-        
+
         Returns:
             List of predictions (class labels for classification, values for regression)
         """
@@ -149,7 +158,7 @@ class Model:
                 for p in preds
             ]
             return [float(r) for r in results]
-        
+
     def summary(self):
         print("\n Model Summary")
         print("=" * 60)
@@ -159,7 +168,7 @@ class Model:
             print("Call model.train() before calling summary().")
             return
 
-        
+
         l1_params = (self.input_dim * self.hidden_dim) + self.hidden_dim
         print(
             f"Layer 1 (Linear): {self.input_dim} -> {self.hidden_dim} "
@@ -170,7 +179,7 @@ class Model:
         print(
             f"Layer 2 (Linear): {self.hidden_dim} -> {self.output_dim} "
             f"| Params: {l2_params}"
-        )   
+        )
 
         print("=" * 60)
         total_params = l1_params + l2_params
@@ -208,7 +217,7 @@ class Model:
 
         #Lazy import
         import mlflow
-        
+
         # Log to MLflow
         print("Logging to MLflow...")
         mlflow.set_tracking_uri("http://localhost:5000")

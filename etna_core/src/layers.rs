@@ -1,7 +1,6 @@
 use rand::Rng;
 use serde::{Serialize, Deserialize};
 use crate::optimizer::{SGD, Adam};
-use crate::softmax::Softmax;
 
 /// Weight initialization strategy
 /// - Xavier (Glorot): For layers followed by Sigmoid/Softmax. std = sqrt(2 / (n_in + n_out))
@@ -14,17 +13,34 @@ pub enum InitStrategy {
     Kaiming,
 }
 
+struct Softmax;
+
+impl Softmax {
+    fn forward(logits: &Vec<f32>) -> Vec<f32> {
+        let max_val = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let exp_vals: Vec<f32> = logits.iter().map(|x| (x - max_val).exp()).collect();
+        let sum_exp: f32 = exp_vals.iter().sum();
+        exp_vals.iter().map(|x| x / sum_exp).collect()
+    }
+
+    fn backward(preds: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        preds.iter().zip(y.iter())
+            .map(|(p, t)| p.iter().zip(t.iter()).map(|(a, b)| a - b).collect())
+            .collect()
+    }
+}
+
 /// Unified trait for all model layers
 pub trait Layer {
     /// Forward pass through the layer
     fn forward(&mut self, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>>;
-    
+
     /// Backward pass through the layer (backpropagation)
     fn backward(&mut self, grad_output: &Vec<Vec<f32>>) -> Vec<Vec<f32>>;
-    
+
     /// Update layer parameters using SGD
     fn update_sgd(&mut self, _optimizer: &SGD) {}
-    
+
     /// Update layer parameters using Adam
     fn update_adam(&mut self, _optimizer: &mut Adam) {}
 }
@@ -42,15 +58,15 @@ pub struct Linear {
 impl Linear {
     /// Create a new Linear layer with legacy initialization (backward compatible)
     /// Create a new Linear layer with specified initialization strategy
-    /// 
+    ///
     /// # Arguments
     /// * `input_size` - Number of input features
-    /// * `output_size` - Number of output features    
+    /// * `output_size` - Number of output features
     /// * `init` - Initialization strategy (Xavier, Kaiming, or Legacy)
     pub fn new_with_init(input_size: usize, output_size: usize, init: InitStrategy) -> Self {
         // UPDATED: Use rand::rng() (replacing thread_rng)
         let mut rng = rand::rng();
-        
+
         let weights = match init {
             InitStrategy::Xavier => {
                 // Xavier/Glorot: std = sqrt(2 / (n_in + n_out))
@@ -74,9 +90,9 @@ impl Linear {
                     })
                     .collect()
             },
-            
+
         };
-            
+
         // Initialize gradients as 0.0
         Self {
             weights,
@@ -524,23 +540,23 @@ mod tests {
         let input_size = 100;
         let output_size = 50;
         let layer = Linear::new_with_init(input_size, output_size, InitStrategy::Kaiming);
-        
+
         // Calculate variance of weights
         let mut sum = 0.0;
         let mut sum_sq = 0.0;
         let count = (input_size * output_size) as f32;
-        
+
         for row in &layer.weights {
             for &w in row {
                 sum += w;
                 sum_sq += w * w;
             }
         }
-        
+
         let mean = sum / count;
         let variance = sum_sq / count - mean * mean;
         let expected_variance = 2.0 / input_size as f32;
-        
+
         // Allow 50% tolerance due to random sampling
         assert!(
             (variance - expected_variance).abs() < expected_variance * 0.5,
@@ -554,23 +570,23 @@ mod tests {
         let input_size = 100;
         let output_size = 50;
         let layer = Linear::new_with_init(input_size, output_size, InitStrategy::Xavier);
-        
+
         // Calculate variance of weights
         let mut sum = 0.0;
         let mut sum_sq = 0.0;
         let count = (input_size * output_size) as f32;
-        
+
         for row in &layer.weights {
             for &w in row {
                 sum += w;
                 sum_sq += w * w;
             }
         }
-        
+
         let mean = sum / count;
         let variance = sum_sq / count - mean * mean;
         let expected_variance = 2.0 / (input_size + output_size) as f32;
-        
+
         // Allow 50% tolerance due to random sampling
         assert!(
             (variance - expected_variance).abs() < expected_variance * 0.5,
