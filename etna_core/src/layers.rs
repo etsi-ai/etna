@@ -11,8 +11,6 @@ pub enum InitStrategy {
     Xavier,
     /// Kaiming/He initialization - best for ReLU, LeakyReLU
     Kaiming,
-    /// Legacy random initialization (-0.1 to 0.1)
-    Legacy,
 }
 
 /// Fully connected layer: y = Wx + b
@@ -27,10 +25,6 @@ pub struct Linear {
 
 impl Linear {
     /// Create a new Linear layer with legacy initialization (backward compatible)
-    pub fn new(input_size: usize, output_size: usize) -> Self {
-        Self::new_with_init(input_size, output_size, InitStrategy::Legacy)
-    }
-
     /// Create a new Linear layer with specified initialization strategy
     /// 
     /// # Arguments
@@ -64,13 +58,7 @@ impl Linear {
                     })
                     .collect()
             },
-            InitStrategy::Legacy => {
-                // Legacy: uniform random between -0.1 and 0.1
-                (0..output_size)
-                    // UPDATED: Use random_range() (replacing gen_range)
-                    .map(|_| (0..input_size).map(|_| rng.random_range(-0.1..0.1)).collect())
-                    .collect()
-            },
+            
         };
             
         // Initialize gradients as 0.0
@@ -459,17 +447,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_legacy_init_range() {
-        // Legacy init: uniform between -0.1 and 0.1
-        let layer = Linear::new_with_init(50, 30, InitStrategy::Legacy);
-        
-        for row in &layer.weights {
-            for &w in row {
-                assert!(w >= -0.1 && w <= 0.1, "Legacy weight {} out of range", w);
-            }
-        }
-    }
 
     #[test]
     fn test_activation_init_strategy() {
@@ -478,15 +455,4 @@ mod tests {
         assert_eq!(Activation::Sigmoid.init_strategy(), InitStrategy::Xavier);
     }
 
-    #[test]
-    fn test_linear_new_uses_legacy() {
-        // Linear::new() should use legacy initialization for backward compatibility
-        let layer = Linear::new(10, 5);
-        
-        for row in &layer.weights {
-            for &w in row {
-                assert!(w >= -0.1 && w <= 0.1, "Default init weight {} out of range", w);
-            }
-        }
-    }
 }
