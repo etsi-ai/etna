@@ -3,7 +3,8 @@ requires = ["maturin>=1.0,<2.0", "numpy>=1.21.0"]
 build-backend = "maturin"
 
 [project]
-name = "etna"
+name = "etsi.etna"
+version = "0.1.0"
 description = "High-performance neural network framework with a Rust core"
 readme = "README.md"
 authors = [{name = "Etsi", email = "etsi.hq@gmail.com"}]
