@@ -1,16 +1,17 @@
 <div align="center">
 
-# etsi.etna
+# etsi-etna
 ### High-Performance Neural Networks. Rust Core. Python Ease.
 
 [![License](https://img.shields.io/badge/License-BSD_2--Clause-orange.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://www.python.org/)
 [![Rust](https://img.shields.io/badge/Rust-1.70%2B-black)](https://www.rust-lang.org/)
+[![PyPI](https://img.shields.io/pypi/v/etsi-etna.svg)](https://pypi.org/project/etsi-etna/)
 [![MLflow](https://img.shields.io/badge/MLflow-Integrated-blueviolet)](https://mlflow.org/)
 
 > **What if machine learning felt effortless?**
 
-`etsi.etna` is a minimalistic, dependency-light neural network library
+`etsi-etna` is a minimalistic, dependency-light neural network library
 designed to make training and evaluating models on structured data fast,
 interpretable and beginner-friendly. It focuses on auto-preprocessing,
 simple linear networks, and core metrics - ideal for research
