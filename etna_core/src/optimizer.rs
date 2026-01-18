@@ -1,10 +1,14 @@
 // Optimizers (SGD, Adam)
 
 /// Simple Stochastic Gradient Descent (SGD) optimizer with optional L2 regularization (weight decay)
-/// 
+///
 /// L2 regularization adds a penalty term to the loss function: L_reg = L + (lambda/2) * ||W||^2
 /// The gradient becomes: grad_W = grad_L + lambda * W
 /// This encourages smaller weights and helps prevent overfitting.
+
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize)]
 pub struct SGD {
     pub learning_rate: f32,
     pub weight_decay: f32,  // L2 regularization coefficient (lambda)
@@ -12,7 +16,7 @@ pub struct SGD {
 
 impl SGD {
     pub fn new(learning_rate: f32) -> Self {
-        SGD { 
+        SGD {
             learning_rate,
             weight_decay: 0.0,  // Default: no regularization
         }
@@ -20,14 +24,15 @@ impl SGD {
 
     /// Create SGD optimizer with L2 regularization (weight decay)
     pub fn with_weight_decay(learning_rate: f32, weight_decay: f32) -> Self {
-        SGD { 
-            learning_rate, 
+        SGD {
+            learning_rate,
             weight_decay,
         }
     }
 }
 
 /// Adam optimizer
+#[derive(Serialize, Deserialize)]
 pub struct Adam {
     lr: f32,
     beta1: f32,
@@ -129,7 +134,7 @@ mod tests {
         // Initialize Adam with specific constants for predictable calculation
         // lr=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8
         let mut optimizer = Adam::new(0.001, 0.9, 0.999, 1e-8);
-        
+
         let mut weights = vec![vec![0.5]]; // Single weight
         let grad_w = vec![vec![0.1]];      // Constant gradient
         let mut bias = vec![0.1];          // Single bias
@@ -147,17 +152,17 @@ mod tests {
         // v = 0.999*0 + 0.001*(0.1^2) = 0.00001
         // m_hat = 0.01 / (1 - 0.9) = 0.1
         // v_hat = 0.00001 / (1 - 0.999) = 0.01
-        // step = lr * m_hat / (sqrt(v_hat) + eps) 
+        // step = lr * m_hat / (sqrt(v_hat) + eps)
         // step = 0.001 * 0.1 / (0.1 + 1e-8) ≈ 0.001
-        
+
         // Expected Weight: 0.5 - 0.001 = 0.499
         let expected_weight = 0.499;
-        assert!((weights[0][0] - expected_weight).abs() < 1e-5, 
+        assert!((weights[0][0] - expected_weight).abs() < 1e-5,
             "Weight update incorrect. Got {}, expected approx {}", weights[0][0], expected_weight);
 
         // Expected Bias: 0.1 - 0.001 = 0.099
         let expected_bias = 0.099;
-        assert!((bias[0] - expected_bias).abs() < 1e-5, 
+        assert!((bias[0] - expected_bias).abs() < 1e-5,
             "Bias update incorrect. Got {}, expected approx {}", bias[0], expected_bias);
     }
 }

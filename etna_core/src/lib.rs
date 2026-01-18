@@ -29,15 +29,14 @@ struct EtnaModel {
 #[pymethods]
 impl EtnaModel {
     #[new]
-    #[pyo3(signature = (input_dim, hidden_dim, output_dim, task_type, activation=None))]
+    #[pyo3(signature = (input_dim, hidden_layers, output_dim, task_type, activation=None))]
     fn new(
         input_dim: usize,
-        hidden_dim: usize,
+        hidden_layers: Vec<usize>,
         output_dim: usize,
         task_type: usize,
         activation: Option<String>,
     ) -> Self {
-        // Parse activation string (default: ReLU)
         let act = match activation.as_deref().unwrap_or("relu") {
             "leaky_relu" => Activation::LeakyReLU,
             "sigmoid" => Activation::Sigmoid,
@@ -45,7 +44,7 @@ impl EtnaModel {
         };
 
         EtnaModel {
-            inner: SimpleNN::new(input_dim, hidden_dim, output_dim, task_type, act),
+            inner: SimpleNN::new(input_dim, hidden_layers, output_dim, task_type, act),
         }
     }
 

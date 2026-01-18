@@ -38,6 +38,4 @@ mlflow.db
 *.pth
 *.ckpt
 *_model.json
-*_regressor.json
-
-
+*.json

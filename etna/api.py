@@ -17,7 +17,7 @@ except ImportError:
 
 
 class Model:
-    def __init__(self, file_path: str, target: str, task_type: str = None, hidden_dim: int = 16, activation: str = "relu"):
+    def __init__(self, file_path: str, target: str, task_type: str = None, hidden_layers: list = [16], activation: str = "relu"):
         """
         Initializes the ETNA model.
         Args:
@@ -31,7 +31,7 @@ class Model:
         self.loss_history = []
 
         # Store architecture parameters
-        self.hidden_dim = hidden_dim
+        self.hidden_layers = hidden_layers
         self.activation = activation
 
         # Determine task type
@@ -59,18 +59,16 @@ class Model:
         # Cached transformed data for persistence-safe prediction
         self._cached_X = None
 
-    def train(self, epochs: int = 100, lr: float = 0.01, weight_decay: float = 0.0, optimizer: str = 'sgd'):
+    def train(self, epochs: int = 100, lr: float = 0.01, batch_size: int = 32, weight_decay: float = 0.0, optimizer: str = 'sgd'):
         """
         Train the model.
 
         Args:
             epochs: Number of training epochs
             lr: Learning rate
-            weight_decay: L2 regularization coefficient (lambda). Higher values
-                          lead to smaller weights and help prevent overfitting.
-                          Typical values: 0.0001 to 0.01
-            optimizer: Optimizer to use ('sgd' or 'adam'). Default is 'sgd'.
-                       Adam optimizer provides better convergence with adaptive learning rates.
+            batch_size: Number of samples per gradient update (default: 32)
+            weight_decay: L2 regularization coefficient (lambda)
+            optimizer: Optimizer to use ('sgd' or 'adam')
         """
         if _etna_rust is None:
             raise ImportError(
@@ -91,12 +89,12 @@ class Model:
         if optimizer_lower not in ['sgd', 'adam']:
             raise ValueError(f"Unsupported optimizer '{optimizer}'. Choose 'sgd' or 'adam'.")
 
-        # LOGICAL FIX: Only initialize if model doesn't exist (supports incremental training)
+        # Only initialize if model doesn't exist (supports incremental training)
         if self.rust_model is None:
             print(f"🚀 Initializing Rust Core [In: {self.input_dim}, Out: {self.output_dim}]...")
             self.rust_model = _etna_rust.EtnaModel(
                 self.input_dim,
-                self.hidden_dim,
+                self.hidden_layers,
                 self.output_dim,
                 self.task_code,
                 self.activation
@@ -111,9 +109,9 @@ class Model:
             print(f"🔥 Training started (Optimizer: {optimizer_display})...")
 
         # Pass optimizer string to Rust backend (it will default to SGD if None or invalid)
-        new_losses = self.rust_model.train(X, y, epochs, lr, weight_decay, optimizer_lower)
+        new_losses = self.rust_model.train(X, y, epochs, lr, batch_size, weight_decay, optimizer_lower)
 
-        # LOGICAL FIX: Extend history instead of overwriting it
+        # Extend history instead of overwriting it
         self.loss_history.extend(new_losses)
         print("✅ Training complete!")
 
@@ -185,9 +183,9 @@ class Model:
         total_params = l1_params + l2_params
         print(f"Total Trainable Params: {total_params}\n")
 
-    def save_model(self, path="model_checkpoint.json", run_name="ETNA_Run"):
+    def save_model(self, path="model_checkpoint.json", run_name="ETNA_Run", mlflow_tracking_uri=None):
         """
-        Saves the model using Rust backend AND tracks it with MLflow.
+        Saves the model using Rust backend. Optionally tracks with MLflow if a URI is provided.
         """
         if self.rust_model is None:
             raise Exception("Model not trained yet!")
@@ -196,46 +194,38 @@ class Model:
         if os.path.dirname(path):
             os.makedirs(os.path.dirname(path), exist_ok=True)
 
-        # Save Rust model
+        # Always save local files
         print(f"Saving model to {path}...")
         self.rust_model.save(path)
 
-        # Save preprocessor + cached state
         preprocessor_path = path + ".preprocessor.json"
         state = self.preprocessor.get_state()
-        state["_cached_X"] = (
-            self._cached_X.tolist() if self._cached_X is not None else None
-        )
+        state["_cached_X"] = self._cached_X.tolist() if self._cached_X is not None else None
         state["_target"] = self.target
 
         with open(preprocessor_path, "w") as f:
             json.dump(state, f)
 
-        # Skip MLflow in test environment
-        if os.environ.get("ETNA_DISABLE_MLFLOW") == "1":
-            return
+        # Only use MLflow if tracking URI is provided and not disabled
+        if mlflow_tracking_uri and os.environ.get("ETNA_DISABLE_MLFLOW") != "1":
+            try:
+                import mlflow
+                print(f"Logging to MLflow at {mlflow_tracking_uri}...")
+                mlflow.set_tracking_uri(mlflow_tracking_uri)
+                mlflow.set_experiment("ETNA_Experiments")
 
-        #Lazy import
-        import mlflow
-
-        # Log to MLflow
-        print("Logging to MLflow...")
-        mlflow.set_tracking_uri("http://localhost:5000")
-        mlflow.set_experiment("ETNA_Experiments")
-
-        with mlflow.start_run(run_name=run_name):
-            mlflow.log_param("task_type", self.task_type)
-            mlflow.log_param("target_column", self.target)
-
-            print(f"📈 Logging {len(self.loss_history)} metrics points...")
-            for epoch, loss in enumerate(self.loss_history):
-                mlflow.log_metric("loss", loss, step=epoch)
-
-            mlflow.log_artifact(path)
-            mlflow.log_artifact(preprocessor_path)
-
-        print("Model saved & tracked!")
-        print("View at: http://localhost:5000")
+                with mlflow.start_run(run_name=run_name):
+                    mlflow.log_param("task_type", self.task_type)
+                    mlflow.log_param("target_column", self.target)
+                    for epoch, loss in enumerate(self.loss_history):
+                        mlflow.log_metric("loss", loss, step=epoch)
+                    mlflow.log_artifact(path)
+                    mlflow.log_artifact(preprocessor_path)
+                print("Model saved & tracked!")
+            except ImportError:
+                print("MLflow not installed. Skipping remote tracking.")
+        else:
+            print(f"Model saved locally to {path}. (MLflow tracking skipped)")
 
     @classmethod
     def load(cls, path: str):

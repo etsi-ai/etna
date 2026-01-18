@@ -4,16 +4,23 @@ build-backend = "maturin"
 
 [project]
 name = "etna"
-description = "A neural network framework with Rust core and Python interface"
-authors = [
-    {name = "ETNA Team"}
-]
-license = {text = "MIT"}
+description = "High-performance neural network framework with a Rust core"
+readme = "README.md"
+authors = [{name = "Etsi", email = "etsi.hq@gmail.com"}]
+license = {text = "BSD-2-Clause"}
 requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+]
 dependencies = [
     "numpy>=1.21.0",
+    "pandas>=1.3.0",
+    "pyarrow>=6.0.0",
 ]
-dynamic = ["version"]
 
 [project.optional-dependencies]
 dev = [
