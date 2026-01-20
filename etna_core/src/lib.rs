@@ -15,11 +15,12 @@ use pyo3::types::PyList;
 use crate::model::{SimpleNN, OptimizerType};
 use crate::layers::Activation;
 
-/// Helper: Convert Python list to Rust Vec<Vec<f32>>
-fn pylist_to_vec2(pylist: &Bound<'_, PyList>) -> Vec<Vec<f32>> {
+/// Safe conversion helper
+fn pylist_to_vec2(pylist: &Bound<'_, PyList>) -> PyResult<Vec<Vec<f32>>> {
     pylist.iter()
-        .map(|item| item.extract::<Vec<f32>>().expect("Expected list of floats"))
-        .collect()
+        .map(|item| item.extract::<Vec<f32>>())
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| PyErr::from(e))
 }
 
 /// Python Class Wrapper
@@ -31,10 +32,10 @@ struct EtnaModel {
 #[pymethods]
 impl EtnaModel {
     #[new]
-    #[pyo3(signature = (input_dim, hidden_dim, output_dim, task_type, activation=None))]
+    #[pyo3(signature = (input_dim, hidden_layers, output_dim, task_type, activation=None))]
     fn new(
         input_dim: usize,
-        hidden_dim: usize,
+        hidden_layers: Vec<usize>,
         output_dim: usize,
         task_type: usize,
         activation: Option<String>,
@@ -46,15 +47,29 @@ impl EtnaModel {
             _ => Activation::ReLU,
         };
 
+        // Use first hidden layer size (TODO: support multiple layers when SimpleNN is updated)
+        let hidden_dim = hidden_layers.first().copied().unwrap_or(16);
+
         EtnaModel {
             inner: SimpleNN::new(input_dim, hidden_dim, output_dim, task_type, act),
         }
     }
 
-    #[pyo3(signature = (x, y, epochs, lr, weight_decay=0.0, optimizer="sgd", batch_size=0, x_val=None, y_val=None))]
-    fn train(&mut self, x: &Bound<'_, PyList>, y: &Bound<'_, PyList>, epochs: usize, lr: f32, weight_decay: f32, optimizer: &str, batch_size: usize, x_val: Option<&Bound<'_, PyList>>, y_val: Option<&Bound<'_, PyList>>) -> PyResult<(Vec<f32>, Vec<f32>)> {
-        let x_vec = pylist_to_vec2(x);
-        let y_vec = pylist_to_vec2(y);
+    #[pyo3(signature = (x, y, epochs, lr, batch_size=32, weight_decay=0.0, optimizer="sgd", x_val=None, y_val=None))]
+    fn train(
+        &mut self,
+        x: &Bound<'_, PyList>,
+        y: &Bound<'_, PyList>,
+        epochs: usize,
+        lr: f32,
+        batch_size: usize,
+        weight_decay: f32,
+        optimizer: &str,
+        x_val: Option<&Bound<'_, PyList>>,
+        y_val: Option<&Bound<'_, PyList>>,
+    ) -> PyResult<(Vec<f32>, Vec<f32>)> {
+        let x_vec = pylist_to_vec2(x)?;
+        let y_vec = pylist_to_vec2(y)?;
 
         // Parse optimizer string (default to SGD if not specified or invalid)
         let optimizer_type = match optimizer {
@@ -63,8 +78,14 @@ impl EtnaModel {
         };
 
         // Convert optional validation data
-        let x_val_opt = x_val.map(|v| pylist_to_vec2(v));
-        let y_val_opt = y_val.map(|v| pylist_to_vec2(v));
+        let x_val_opt = match x_val {
+            Some(v) => Some(pylist_to_vec2(v)?),
+            None => None,
+        };
+        let y_val_opt = match y_val {
+            Some(v) => Some(pylist_to_vec2(v)?),
+            None => None,
+        };
 
         // Capture the history returned by Rust (both train and val losses)
         let (train_history, val_history) = self.inner.train(
@@ -84,14 +105,14 @@ impl EtnaModel {
     }
 
     fn predict(&mut self, x: &Bound<'_, PyList>) -> PyResult<Vec<f32>> {
-        let x_vec = pylist_to_vec2(x);
+        let x_vec = pylist_to_vec2(x)?;
         Ok(self.inner.predict(&x_vec))
     }
 
     /// Get raw forward pass outputs (probabilities for classification, values for regression)
     /// This is useful for calculating validation loss
     fn forward(&mut self, x: &Bound<'_, PyList>) -> PyResult<Vec<Vec<f32>>> {
-        let x_vec = pylist_to_vec2(x);
+        let x_vec = pylist_to_vec2(x)?;
         Ok(self.inner.forward(&x_vec))
     }
 
@@ -116,3 +137,4 @@ fn _etna_rust(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<EtnaModel>()?;
     Ok(())
 }
+

@@ -11,8 +11,38 @@ pub enum InitStrategy {
     Xavier,
     /// Kaiming/He initialization - best for ReLU, LeakyReLU
     Kaiming,
-    /// Legacy random initialization (-0.1 to 0.1)
-    Legacy,
+}
+
+struct Softmax;
+
+impl Softmax {
+    fn forward(logits: &Vec<f32>) -> Vec<f32> {
+        let max_val = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let exp_vals: Vec<f32> = logits.iter().map(|x| (x - max_val).exp()).collect();
+        let sum_exp: f32 = exp_vals.iter().sum();
+        exp_vals.iter().map(|x| x / sum_exp).collect()
+    }
+
+    fn backward(preds: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        preds.iter().zip(y.iter())
+            .map(|(p, t)| p.iter().zip(t.iter()).map(|(a, b)| a - b).collect())
+            .collect()
+    }
+}
+
+/// Unified trait for all model layers
+pub trait Layer {
+    /// Forward pass through the layer
+    fn forward(&mut self, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>>;
+
+    /// Backward pass through the layer (backpropagation)
+    fn backward(&mut self, grad_output: &Vec<Vec<f32>>) -> Vec<Vec<f32>>;
+
+    /// Update layer parameters using SGD
+    fn update_sgd(&mut self, _optimizer: &SGD) {}
+
+    /// Update layer parameters using Adam
+    fn update_adam(&mut self, _optimizer: &mut Adam) {}
 }
 
 /// Fully connected layer: y = Wx + b
@@ -27,20 +57,16 @@ pub struct Linear {
 
 impl Linear {
     /// Create a new Linear layer with legacy initialization (backward compatible)
-    pub fn new(input_size: usize, output_size: usize) -> Self {
-        Self::new_with_init(input_size, output_size, InitStrategy::Legacy)
-    }
-
     /// Create a new Linear layer with specified initialization strategy
-    /// 
+    ///
     /// # Arguments
     /// * `input_size` - Number of input features
-    /// * `output_size` - Number of output features    
+    /// * `output_size` - Number of output features
     /// * `init` - Initialization strategy (Xavier, Kaiming, or Legacy)
     pub fn new_with_init(input_size: usize, output_size: usize, init: InitStrategy) -> Self {
         // UPDATED: Use rand::rng() (replacing thread_rng)
         let mut rng = rand::rng();
-        
+
         let weights = match init {
             InitStrategy::Xavier => {
                 // Xavier/Glorot: std = sqrt(2 / (n_in + n_out))
@@ -64,15 +90,9 @@ impl Linear {
                     })
                     .collect()
             },
-            InitStrategy::Legacy => {
-                // Legacy: uniform random between -0.1 and 0.1
-                (0..output_size)
-                    // UPDATED: Use random_range() (replacing gen_range)
-                    .map(|_| (0..input_size).map(|_| rng.random_range(-0.1..0.1)).collect())
-                    .collect()
-            },
+
         };
-            
+
         // Initialize gradients as 0.0
         Self {
             weights,
@@ -148,6 +168,24 @@ impl Linear {
         // Clear gradients after update
         self.grad_weights.iter_mut().for_each(|r| r.iter_mut().for_each(|v| *v = 0.0));
         self.grad_bias.iter_mut().for_each(|v| *v = 0.0);
+    }
+}
+
+impl Layer for Linear {
+    fn forward(&mut self, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        self.forward(input)
+    }
+
+    fn backward(&mut self, grad_output: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        self.backward(grad_output)
+    }
+
+    fn update_sgd(&mut self, optimizer: &SGD) {
+        self.update_sgd(optimizer)
+    }
+
+    fn update_adam(&mut self, optimizer: &mut Adam) {
+        self.update_adam(optimizer)
     }
 }
 
@@ -248,6 +286,103 @@ impl Activation {
         match self {
             Activation::ReLU | Activation::LeakyReLU => InitStrategy::Kaiming,
             Activation::Sigmoid => InitStrategy::Xavier,
+        }
+    }
+}
+
+/// Wrapper for activations to implement the Layer trait
+#[derive(Serialize, Deserialize)]
+pub struct ActivationLayer {
+    pub activation: Activation,
+    cached_data: Vec<Vec<f32>>,
+}
+
+impl ActivationLayer {
+    pub fn new(activation: Activation) -> Self {
+        Self {
+            activation,
+            cached_data: vec![],
+        }
+    }
+}
+
+impl Layer for ActivationLayer {
+    fn forward(&mut self, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        let output = self.activation.forward(input);
+        // Sigmoid backward needs output, ReLU/LeakyReLU need input
+        match self.activation {
+            Activation::Sigmoid => self.cached_data = output.clone(),
+            _ => self.cached_data = input.clone(),
+        }
+        output
+    }
+
+    fn backward(&mut self, grad_output: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        self.activation.backward(grad_output, &self.cached_data)
+    }
+}
+
+/// Wrapper for Softmax to implement the Layer trait
+#[derive(Serialize, Deserialize, Default)]
+pub struct SoftmaxLayer {
+    cached_output: Vec<Vec<f32>>,
+}
+
+impl SoftmaxLayer {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Layer for SoftmaxLayer {
+    fn forward(&mut self, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        let output = input.iter().map(|l| Softmax::forward(l)).collect();
+        self.cached_output = output;
+        self.cached_output.clone()
+    }
+
+    fn backward(&mut self, grad_output: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        // Note: For the output layer, grad_output is expected to be the targets (Y)
+        // due to the specific implementation of Softmax::backward returning (preds - targets)
+        Softmax::backward(&self.cached_output, grad_output)
+    }
+}
+
+/// Polymorphic wrapper for all layer types to support serialization
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum LayerWrapper {
+    Linear(Linear),
+    Activation(ActivationLayer),
+    Softmax(SoftmaxLayer),
+}
+
+impl Layer for LayerWrapper {
+    fn forward(&mut self, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        match self {
+            Self::Linear(l) => l.forward(input),
+            Self::Activation(a) => a.forward(input),
+            Self::Softmax(s) => s.forward(input),
+        }
+    }
+
+    fn backward(&mut self, grad_output: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        match self {
+            Self::Linear(l) => l.backward(grad_output),
+            Self::Activation(a) => a.backward(grad_output),
+            Self::Softmax(s) => s.backward(grad_output),
+        }
+    }
+
+    fn update_sgd(&mut self, optimizer: &SGD) {
+        if let Self::Linear(l) = self {
+            l.update_sgd(optimizer);
+        }
+    }
+
+    fn update_adam(&mut self, optimizer: &mut Adam) {
+        if let Self::Linear(l) = self {
+            l.update_adam(optimizer);
         }
     }
 }
@@ -405,23 +540,23 @@ mod tests {
         let input_size = 100;
         let output_size = 50;
         let layer = Linear::new_with_init(input_size, output_size, InitStrategy::Kaiming);
-        
+
         // Calculate variance of weights
         let mut sum = 0.0;
         let mut sum_sq = 0.0;
         let count = (input_size * output_size) as f32;
-        
+
         for row in &layer.weights {
             for &w in row {
                 sum += w;
                 sum_sq += w * w;
             }
         }
-        
+
         let mean = sum / count;
         let variance = sum_sq / count - mean * mean;
         let expected_variance = 2.0 / input_size as f32;
-        
+
         // Allow 50% tolerance due to random sampling
         assert!(
             (variance - expected_variance).abs() < expected_variance * 0.5,
@@ -435,23 +570,23 @@ mod tests {
         let input_size = 100;
         let output_size = 50;
         let layer = Linear::new_with_init(input_size, output_size, InitStrategy::Xavier);
-        
+
         // Calculate variance of weights
         let mut sum = 0.0;
         let mut sum_sq = 0.0;
         let count = (input_size * output_size) as f32;
-        
+
         for row in &layer.weights {
             for &w in row {
                 sum += w;
                 sum_sq += w * w;
             }
         }
-        
+
         let mean = sum / count;
         let variance = sum_sq / count - mean * mean;
         let expected_variance = 2.0 / (input_size + output_size) as f32;
-        
+
         // Allow 50% tolerance due to random sampling
         assert!(
             (variance - expected_variance).abs() < expected_variance * 0.5,
@@ -459,17 +594,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_legacy_init_range() {
-        // Legacy init: uniform between -0.1 and 0.1
-        let layer = Linear::new_with_init(50, 30, InitStrategy::Legacy);
-        
-        for row in &layer.weights {
-            for &w in row {
-                assert!(w >= -0.1 && w <= 0.1, "Legacy weight {} out of range", w);
-            }
-        }
-    }
 
     #[test]
     fn test_activation_init_strategy() {
@@ -478,15 +602,4 @@ mod tests {
         assert_eq!(Activation::Sigmoid.init_strategy(), InitStrategy::Xavier);
     }
 
-    #[test]
-    fn test_linear_new_uses_legacy() {
-        // Linear::new() should use legacy initialization for backward compatibility
-        let layer = Linear::new(10, 5);
-        
-        for row in &layer.weights {
-            for &w in row {
-                assert!(w >= -0.1 && w <= 0.1, "Default init weight {} out of range", w);
-            }
-        }
-    }
 }

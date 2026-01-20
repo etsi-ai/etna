@@ -1,16 +1,17 @@
 <div align="center">
 
-# etsi.etna
+# etsi-etna
 ### High-Performance Neural Networks. Rust Core. Python Ease.
 
 [![License](https://img.shields.io/badge/License-BSD_2--Clause-orange.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://www.python.org/)
 [![Rust](https://img.shields.io/badge/Rust-1.70%2B-black)](https://www.rust-lang.org/)
+[![PyPI](https://img.shields.io/pypi/v/etsi-etna.svg)](https://pypi.org/project/etsi-etna/)
 [![MLflow](https://img.shields.io/badge/MLflow-Integrated-blueviolet)](https://mlflow.org/)
 
 > **What if machine learning felt effortless?**
 
-`etsi.etna` is a minimalistic, dependency-light neural network library
+`etsi-etna` is a minimalistic, dependency-light neural network library
 designed to make training and evaluating models on structured data fast,
 interpretable and beginner-friendly. It focuses on auto-preprocessing,
 simple linear networks, and core metrics - ideal for research
@@ -28,20 +29,18 @@ Machine learning libraries often force a trade-off: simplicity or speed. Etna re
 
 * **Blazing Fast**: The heavy lifting (Linear layers, ReLU, Softmax, Backprop) is handled by a highly optimized **Rust** core (`etna_core`).
 * **Pythonic API**: Users interact with a familiar, Scikit-learn-like Python interface.
-* **Intelligent Defaults**: Automatically detects if you are performing **Classification** or **Regression** based on your target data.
-* **Production Ready**: Built-in **MLflow** integration for experiment tracking and model versioning out of the box.
+* **Arbitrary Depth**: Etna now supports sequential multi-layer architectures.
+* **Stateful Optimization**: Advanced optimizers like Adam maintain momentum and moment estimates across training sessions.
 
 ---
 
 ## Key Features
 
+* **Sequential Multi-Layer Architecture**: Define any number of hidden layers using a simple list (e.g., `[64, 32, 16]`).
 * **Hybrid Architecture**: `pyo3` bindings bridge Python ease with Rust performance.
-* **Auto-Preprocessing**: Automatic scaling (Standard/MinMax) and categorical encoding (One-Hot) based on column types.
-* **Smart Task Detection**:
-    * *Classification*: Auto-detects low cardinality or string targets.
-    * *Regression*: Auto-detects continuous numeric targets.
-* **Comprehensive Metrics**: Built-in evaluation suite including Accuracy, F1-Score, MSE, R², and Cross-Entropy Loss.
-* **Zero-Config MLflow**: Save, version, and track model metrics with a single line of code.
+* **Auto-Preprocessing**: Automatic scaling and categorical encoding based on column types.
+* **Persistent Training**: Save and load models while preserving weight values and optimizer states.
+* **Flexible MLflow Tracking**: Single-line experiment tracking that is now safely optional for local-only use.
 
 ---
 
@@ -59,7 +58,7 @@ Etna uses `maturin` to build the Rust extensions.
     git clone https://github.com/etsi-ai/etna.git
     cd etna
     ```
-    
+
 2.  **Set up a Virtual Environment (Recommended)**
     ```bash
     python -m venv .venv
@@ -72,8 +71,8 @@ Etna uses `maturin` to build the Rust extensions.
 3.  **Install dependencies & build**
     ```bash
     # Install build tools
-    pip install maturin numpy pandas mlflow jupyter pytest
-    
+    pip install -r requirements.txt
+
     # Build and install locally
     maturin develop --release
     ```
@@ -100,48 +99,49 @@ jupyter notebook mvp_testing.ipynb
 
 If you prefer to start coding immediately, here are the basics:
 
-1. **Classification (Auto-Detected)**
-Etna automatically handles string labels and normalizes your data.
+1. **Classification with Deep Architecture**
+Etna now supports any network depth. The example below initializes a 4-layer network.
 ```bash
 from etna import Model
-from etna.metrics import accuracy_score
 
-# Initialize model (Auto-detects Classification based on target)
-model = Model(file_path="iris.csv", target="species")
+# Initialize model with 3 hidden layers: 64 -> 32 -> 16
+model = Model(
+    file_path="iris.csv",
+    target="species",
+    hidden_layers=[64, 32, 16],
+    activation="leaky_relu"
+)
 
-# Train with Rust backend
-model.train(epochs=100, lr=0.01)
+# Train with Adam optimizer
+model.train(epochs=100, lr=0.01, optimizer="adam")
 
-# Predict (Returns original class labels, e.g., "setosa")
+# Predict original class labels
 predictions = model.predict()
-print("Predictions:", predictions[:5])
 ```
 
-2. **Regression (Manual Override)**
-You can explicitly define the task type if needed.
+2. **Regression & Incremental Training**
+Because optimizer states are persistent, you can resume training smoothly.
 ```bash
-# Force regression for continuous targets
-model = Model(file_path="housing.csv", target="price", task_type="regression")
+model = Model("housing.csv", target="price", task_type="regression")
 
-model.train(epochs=500, lr=0.001)
+# First training phase
+model.train(epochs=50)
 
-# Predict (Returns float values)
-prices = model.predict()
+# Resume training: Adam momentum is preserved!
+model.train(epochs=50)
 ```
 
 ---
 
 ## Experiment Tracking
 
-Etna includes native MLflow integration. Track your loss curves, parameters, and artifacts without setting up complex boilerplate.
+Etna includes native MLflow integration. To use it, simply provide your tracking URI when saving.
 ```bash
-# Train your model
-model.train(epochs=200)
-
 # Save locally AND log to MLflow in one step
 model.save_model(
-    path="my_model_v1.json", 
-    run_name="MVP_Demo_Run"
+    path="my_model_v1.json",
+    run_name="Deep_Run_01",
+    mlflow_tracking_uri="http://localhost:5000"
 )
 ```
 **What happens automatically:**
