@@ -51,8 +51,8 @@ impl EtnaModel {
         }
     }
 
-    #[pyo3(signature = (x, y, epochs, lr, weight_decay=0.0, optimizer="sgd"))]
-    fn train(&mut self, x: &Bound<'_, PyList>, y: &Bound<'_, PyList>, epochs: usize, lr: f32, weight_decay: f32, optimizer: &str) -> PyResult<Vec<f32>> {
+    #[pyo3(signature = (x, y, epochs, lr, weight_decay=0.0, optimizer="sgd", batch_size=0, x_val=None, y_val=None))]
+    fn train(&mut self, x: &Bound<'_, PyList>, y: &Bound<'_, PyList>, epochs: usize, lr: f32, weight_decay: f32, optimizer: &str, batch_size: usize, x_val: Option<&Bound<'_, PyList>>, y_val: Option<&Bound<'_, PyList>>) -> PyResult<(Vec<f32>, Vec<f32>)> {
         let x_vec = pylist_to_vec2(x);
         let y_vec = pylist_to_vec2(y);
 
@@ -62,11 +62,25 @@ impl EtnaModel {
             _ => OptimizerType::SGD,  // Default to SGD for backward compatibility
         };
 
-        // Capture the history returned by Rust
-        let history = self.inner.train(&x_vec, &y_vec, epochs, lr, weight_decay, optimizer_type);
+        // Convert optional validation data
+        let x_val_opt = x_val.map(|v| pylist_to_vec2(v));
+        let y_val_opt = y_val.map(|v| pylist_to_vec2(v));
+
+        // Capture the history returned by Rust (both train and val losses)
+        let (train_history, val_history) = self.inner.train(
+            &x_vec, 
+            &y_vec, 
+            epochs, 
+            lr, 
+            weight_decay, 
+            optimizer_type,
+            batch_size,
+            x_val_opt.as_ref(),
+            y_val_opt.as_ref()
+        );
         
-        // Return it to Python
-        Ok(history)
+        // Return both histories to Python
+        Ok((train_history, val_history))
     }
 
     fn predict(&mut self, x: &Bound<'_, PyList>) -> PyResult<Vec<f32>> {

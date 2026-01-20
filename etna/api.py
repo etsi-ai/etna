@@ -8,7 +8,6 @@ import numpy as np
 
 from .utils import load_data
 from .preprocessing import Preprocessor
-from .metrics import CrossEntropyLoss
 
 # Safe Rust import
 try:
@@ -57,7 +56,7 @@ class Model:
         self._cached_X = None
         self.val_loss_history = []
 
-    def train(self, epochs: int = 100, lr: float = 0.01, weight_decay: float = 0.0, optimizer: str = 'sgd', validation_split: float = 0.2):
+    def train(self, epochs: int = 100, lr: float = 0.01, weight_decay: float = 0.0, optimizer: str = 'sgd', validation_split: float = 0.2, batch_size: int = 0):
         """
         Train the model.
 
@@ -71,6 +70,7 @@ class Model:
                        Adam optimizer provides better convergence with adaptive learning rates.
             validation_split: Fraction of data to use for validation (default: 0.2).
                             Set to 0.0 to disable validation split.
+            batch_size: Batch size for training (default: 0 means full batch).
         """
         if _etna_rust is None:
             raise ImportError(
@@ -80,6 +80,9 @@ class Model:
 
         if not 0.0 <= validation_split < 1.0:
             raise ValueError(f"validation_split must be in [0.0, 1.0), got {validation_split}")
+
+        if batch_size < 0:
+            raise ValueError(f"batch_size must be >= 0, got {batch_size}")
 
         print("⚙️  Preprocessing data...")
         X, y = self.preprocessor.fit_transform(self.df, self.target)
@@ -96,8 +99,8 @@ class Model:
         else:
             X_train = X
             y_train = y
-            X_val = []
-            y_val = []
+            X_val = None
+            y_val = None
             print("📊 Using full dataset for training (no validation split)")
         
         # Cache training data for predict() without arguments
@@ -124,131 +127,24 @@ class Model:
         else:
             print(f"🔥 Training started (Optimizer: {optimizer_display})...")
 
-        # Train epoch-by-epoch to calculate validation loss after each epoch
-        train_losses = []
-        val_losses = []
-        
-        for epoch in range(epochs):
-            # Train for one epoch
-            epoch_losses = self.rust_model.train(X_train, y_train, 1, lr, weight_decay, optimizer_lower)
-            train_losses.extend(epoch_losses)
-            
-            # Calculate validation loss if validation split is enabled
-            if validation_split > 0.0 and len(X_val) > 0:
-                # Skip validation if we have too few samples (less than 1)
-                if len(X_val) >= 1:
-                    val_loss = self._calculate_validation_loss(X_val, y_val)
-                    val_losses.append(val_loss)
-                    
-                    if epoch % 10 == 0:
-                        if np.isfinite(val_loss):
-                            print(f"Epoch {epoch}/{epochs} - Train Loss: {epoch_losses[0]:.4f}, Val Loss: {val_loss:.4f}")
-                        else:
-                            print(f"Epoch {epoch}/{epochs} - Train Loss: {epoch_losses[0]:.4f}, Val Loss: N/A (calculation failed)")
-                else:
-                    # Not enough validation samples, skip validation loss
-                    val_losses.append(float('inf'))
-            else:
-                if epoch % 10 == 0:
-                    print(f"Epoch {epoch}/{epochs} - Loss: {epoch_losses[0]:.4f}")
+        # Train in Rust with validation data passed in (optimizer state persists across epochs)
+        train_losses, val_losses = self.rust_model.train(
+            X_train, 
+            y_train, 
+            epochs, 
+            lr, 
+            weight_decay, 
+            optimizer_lower,
+            batch_size,
+            X_val if validation_split > 0.0 and X_val is not None else None,
+            y_val if validation_split > 0.0 and y_val is not None else None
+        )
 
         # LOGICAL FIX: Extend history instead of overwriting it
         self.loss_history.extend(train_losses)
-        if validation_split > 0.0:
+        if validation_split > 0.0 and val_losses:
             self.val_loss_history.extend(val_losses)
         print("✅ Training complete!")
-
-    def _calculate_validation_loss(self, X_val, y_val):
-        """
-        Calculate validation loss on validation set.
-        
-        Args:
-            X_val: Validation features
-            y_val: Validation targets
-            
-        Returns:
-            Validation loss value
-        """
-        # Ensure we have validation data
-        if len(X_val) == 0 or len(y_val) == 0:
-            return float('inf')
-        
-        # Convert to list format expected by Rust
-        # X_val and y_val are already lists from preprocessing, but ensure proper format
-        if isinstance(X_val, np.ndarray):
-            X_val_list = X_val.tolist()
-        elif isinstance(X_val, list):
-            X_val_list = X_val
-        else:
-            X_val_list = list(X_val)
-            
-        if isinstance(y_val, np.ndarray):
-            y_val_list = y_val.tolist()
-        elif isinstance(y_val, list):
-            y_val_list = y_val
-        else:
-            y_val_list = list(y_val)
-        
-        # Ensure X_val_list is a list of lists (even for single sample)
-        if len(X_val_list) > 0 and not isinstance(X_val_list[0], list):
-            X_val_list = [X_val_list]
-        
-        # Ensure y_val_list is a list of lists (even for single sample)
-        if len(y_val_list) > 0 and not isinstance(y_val_list[0], list):
-            y_val_list = [y_val_list]
-        
-        # Get raw outputs from model
-        try:
-            raw_outputs = self.rust_model.forward(X_val_list)
-        except Exception as e:
-            # If forward fails, return a high loss value
-            print(f"⚠️  Warning: Forward pass failed during validation: {e}")
-            return float('inf')
-        
-        # Validate that we got predictions
-        if not raw_outputs or len(raw_outputs) == 0:
-            print(f"⚠️  Warning: Forward pass returned empty predictions for {len(X_val_list)} validation samples")
-            return float('inf')
-        
-        if len(raw_outputs) != len(y_val_list):
-            print(f"⚠️  Warning: Mismatch between predictions ({len(raw_outputs)}) and targets ({len(y_val_list)})")
-            return float('inf')
-        
-        if self.task_type == "classification":
-            # For classification, use cross-entropy loss
-            # y_val is already one-hot encoded from preprocessing
-            try:
-                loss = CrossEntropyLoss.calculate(y_val_list, raw_outputs)
-            except ValueError as e:
-                # Handle shape mismatches gracefully
-                print(f"⚠️  Warning: Cross-entropy calculation failed: {e}")
-                return float('inf')
-        else:
-            # For regression, use MSE
-            # y_val is a list of lists (one value per sample)
-            # raw_outputs is also a list of lists (one value per sample)
-            y_val_array = np.array(y_val_list)
-            raw_outputs_array = np.array(raw_outputs)
-            
-            # Handle case where y_val might be 2D or 1D
-            if y_val_array.ndim == 2:
-                y_val_flat = y_val_array.flatten()
-            else:
-                y_val_flat = y_val_array
-                
-            if raw_outputs_array.ndim == 2:
-                raw_outputs_flat = raw_outputs_array.flatten()
-            else:
-                raw_outputs_flat = raw_outputs_array
-            
-            # Ensure same length
-            min_len = min(len(y_val_flat), len(raw_outputs_flat))
-            if min_len == 0:
-                return float('inf')
-                
-            loss = float(np.mean((y_val_flat[:min_len] - raw_outputs_flat[:min_len]) ** 2))
-        
-        return loss
 
     def predict(self, data_path: str = None):
         """
