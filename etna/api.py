@@ -5,7 +5,7 @@ import json
 ##import mlflow
 import pandas as pd
 import numpy as np
-
+from etna.utils import set_seed
 from .utils import load_data
 from .preprocessing import Preprocessor
 
@@ -17,23 +17,30 @@ except ImportError:
 
 
 class Model:
-    def __init__(self, file_path: str, target: str, task_type: str = None, hidden_dim: int = 16, activation: str = "relu"):
+    def __init__(self, file_path: str, target: str, task_type: str = None, hidden_dim: int = 16, activation: str = "relu", seed: int = None):
         """
         Initializes the ETNA model.
         Args:
             file_path: Path to the .csv dataset
             target: Name of the target column
             task_type: 'classification', 'regression', or None (auto-detect)
+            seed: Optional random seed for reproducibility
         """
         self.file_path = file_path
         self.target = target
         self.df = load_data(file_path)
         self.loss_history = []
+        
+        # --- NEW SEED LOGIC ---
+        self.seed = seed
+        if seed is not None:
+            set_seed(seed)
+        # ----------------------
 
         # Store architecture parameters
         self.hidden_dim = hidden_dim
         self.activation = activation
-
+        
         # Determine task type
         if task_type:
             self.task_type = task_type.lower()
@@ -100,6 +107,7 @@ class Model:
                 self.output_dim,
                 self.task_code,
                 self.activation
+                # TODO: Pass self.seed here once the Rust core supports random seed control
             )
         else:
             print(f"🔄 Resuming training on existing Core [In: {self.input_dim}, Out: {self.output_dim}]...")

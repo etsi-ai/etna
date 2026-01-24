@@ -57,6 +57,7 @@ __all__ = [
     'preprocessing',
     'utils',
     'cli',
+    'set_seed',
     'accuracy_score',
     'precision_recall_f1_score', 
     'confusion_matrix_score',
@@ -66,3 +67,5 @@ __all__ = [
     'RegressionMetrics', 
     'CrossEntropyLoss',
 ]
+
+from etna.utils import set_seed
