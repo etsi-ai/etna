@@ -52,7 +52,7 @@ impl EtnaModel {
     #[pyo3(signature = (x, y, epochs, lr, batch_size=32, weight_decay=0.0, optimizer="sgd", progress_callback=None))]
     fn train(
         &mut self,
-        _py: Python<'_>,
+        py: Python<'_>,
         x: &Bound<'_, PyList>,
         y: &Bound<'_, PyList>,
         epochs: usize,
@@ -70,14 +70,11 @@ impl EtnaModel {
         };
 
         // Create a closure that calls the Python callback if provided
+        // We capture 'py' from the environment, which is safe because the callback
+        // is executed synchronously within this function's scope.
         let callback = |epoch: usize, total: usize, loss: f32| {
             if let Some(ref cb) = progress_callback {
-                #[allow(deprecated)]
-                    if let Err(e) = cb.call1(py, (epoch, total, loss)) {
-                        e.print(py);
-                    }
-                    let _ = cb.call1(py, (epoch, total, loss));
-                });
+                let _ = cb.call1(py, (epoch, total, loss));
             }
         };
 
