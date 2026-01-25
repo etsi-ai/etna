@@ -8,6 +8,7 @@ import numpy as np
 
 from .utils import load_data
 from .preprocessing import Preprocessor
+from tqdm import tqdm
 
 # Safe Rust import
 try:
@@ -108,10 +109,21 @@ class Model:
         else:
             print(f"🔥 Training started (Optimizer: {optimizer_display})...")
 
-        # Pass optimizer string to Rust backend (it will default to SGD if None or invalid)
-        new_losses = self.rust_model.train(X, y, epochs, lr, batch_size, weight_decay, optimizer_lower)
-
-        # Extend history instead of overwriting it
+        # Create tqdm progress bar
+        pbar = tqdm(total=epochs, desc="Training", unit="epoch")
+        
+        # Callback function that Rust calls after each epoch
+        def progress_callback(epoch, total, loss):
+            pbar.update(1)
+            pbar.set_description(f"Loss: {loss:.4f}")
+        
+        # Single Rust call - training loop stays in Rust for performance
+        new_losses = self.rust_model.train(
+            X, y, epochs, lr, batch_size, weight_decay, 
+            optimizer_lower, progress_callback
+        )
+        
+        pbar.close()
         self.loss_history.extend(new_losses)
         print("✅ Training complete!")
 

@@ -7,6 +7,7 @@ mod optimizer;
 
 use pyo3::prelude::*;
 use pyo3::types::PyList;
+use pyo3::Py;
 
 use crate::layers::Activation;
 use crate::model::SimpleNN;
@@ -48,9 +49,10 @@ impl EtnaModel {
         }
     }
 
-    #[pyo3(signature = (x, y, epochs, lr, batch_size=32, weight_decay=0.0, optimizer="sgd"))]
+    #[pyo3(signature = (x, y, epochs, lr, batch_size=32, weight_decay=0.0, optimizer="sgd", progress_callback=None))]
     fn train(
         &mut self,
+        _py: Python<'_>,
         x: &Bound<'_, PyList>,
         y: &Bound<'_, PyList>,
         epochs: usize,
@@ -58,6 +60,7 @@ impl EtnaModel {
         batch_size: usize,
         weight_decay: f32,
         optimizer: &str,
+        progress_callback: Option<Py<PyAny>>,
     ) -> PyResult<Vec<f32>> {
         let x_vec = pylist_to_vec2(x)?;
         let y_vec = pylist_to_vec2(y)?;
@@ -66,18 +69,28 @@ impl EtnaModel {
             _ => OptimizerType::SGD,
         };
 
-    // Capture the history returned by Rust
-    let history = self.inner.train(
-        &x_vec,
-        &y_vec,
-        epochs,
-        lr,
-        weight_decay,
-        optimizer_type,
-        batch_size,
-    );
+        // Create a closure that calls the Python callback if provided
+        let callback = |epoch: usize, total: usize, loss: f32| {
+            if let Some(ref cb) = progress_callback {
+                Python::with_gil(|py| {
+                    let _ = cb.call1(py, (epoch, total, loss));
+                });
+            }
+        };
 
-        // Return it to Python
+        // Training loop stays in Rust - pass callback for progress reporting
+        let history = self.inner.train_with_callback(
+            &x_vec,
+            &y_vec,
+            epochs,
+            lr,
+            weight_decay,
+            optimizer_type,
+            batch_size,
+            callback,
+        );
+
+        // Return loss history to Python
         Ok(history)
     }
 
