@@ -120,7 +120,7 @@ class Model:
         # Single Rust call - training loop stays in Rust for performance
         new_losses = self.rust_model.train(
             X, y, epochs, lr, batch_size, weight_decay, 
-            optimizer_lower, progress_callback
+            optimizer_lower, progress_callback=progress_callback
         )
         
         pbar.close()
