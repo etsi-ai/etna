@@ -73,7 +73,9 @@ impl EtnaModel {
         let callback = |epoch: usize, total: usize, loss: f32| {
             if let Some(ref cb) = progress_callback {
                 #[allow(deprecated)]
-                Python::with_gil(|py| {
+                    if let Err(e) = cb.call1(py, (epoch, total, loss)) {
+                        e.print(py);
+                    }
                     let _ = cb.call1(py, (epoch, total, loss));
                 });
             }
