@@ -1,8 +1,16 @@
 """
 Test script to verify tqdm progress bar integration with Rust-side callbacks.
 Uses mocking to bypass Rust backend compilation requirement.
+"""
+import sys
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 from io import StringIO
+
+# Add project root to path
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
 def test_tqdm_progress_bar():
     """Verify tqdm is properly integrated with callback-based progress reporting."""
     
@@ -59,5 +67,11 @@ def test_tqdm_progress_bar():
                 
                 # Verify loss history was populated
                 assert len(model.loss_history) == 5, f"Expected 5 loss entries, got {len(model.loss_history)}"
+                
+                print("✅ tqdm callback-based integration test PASSED!")
+                print(f"   - train() called {mock_model.train.call_count} time (single Rust call)")
+                print(f"   - loss_history has {len(model.loss_history)} entries")
+                print("   - Progress callback passed to Rust ✓")
+
 if __name__ == "__main__":
     test_tqdm_progress_bar()
