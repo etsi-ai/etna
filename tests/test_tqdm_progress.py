@@ -67,11 +67,5 @@ def test_tqdm_progress_bar():
                 
                 # Verify loss history was populated
                 assert len(model.loss_history) == 5, f"Expected 5 loss entries, got {len(model.loss_history)}"
-                
-                print("✅ tqdm callback-based integration test PASSED!")
-                print(f"   - train() called {mock_model.train.call_count} time (single Rust call)")
-                print(f"   - loss_history has {len(model.loss_history)} entries")
-                print("   - Progress callback passed to Rust ✓")
-
 if __name__ == "__main__":
     test_tqdm_progress_bar()
