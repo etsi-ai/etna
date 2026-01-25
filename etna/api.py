@@ -8,6 +8,7 @@ import numpy as np
 
 from .utils import load_data
 from .preprocessing import Preprocessor
+from tqdm import tqdm
 
 # Safe Rust import
 try:
@@ -108,11 +109,15 @@ class Model:
         else:
             print(f"🔥 Training started (Optimizer: {optimizer_display})...")
 
-        # Pass optimizer string to Rust backend (it will default to SGD if None or invalid)
-        new_losses = self.rust_model.train(X, y, epochs, lr, batch_size, weight_decay, optimizer_lower)
-
-        # Extend history instead of overwriting it
-        self.loss_history.extend(new_losses)
+        # Train epoch-by-epoch with progress bar
+        pbar = tqdm(range(epochs), desc="Training", unit="epoch")
+        for epoch in pbar:
+            # Train for 1 epoch at a time to capture per-epoch loss
+            epoch_losses = self.rust_model.train(X, y, 1, lr, batch_size, weight_decay, optimizer_lower)
+            current_loss = epoch_losses[-1]
+            self.loss_history.append(current_loss)
+            pbar.set_description(f"Loss: {current_loss:.4f}")
+        
         print("✅ Training complete!")
 
     def predict(self, data_path: str = None):
