@@ -87,6 +87,7 @@ impl SimpleNN {
     }
 
     /// Train the network using mandatory mini-batch training
+    #[allow(dead_code)]
     pub fn train(
         &mut self,
         x: &Vec<Vec<f32>>,

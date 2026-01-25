@@ -72,6 +72,7 @@ impl EtnaModel {
         // Create a closure that calls the Python callback if provided
         let callback = |epoch: usize, total: usize, loss: f32| {
             if let Some(ref cb) = progress_callback {
+                #[allow(deprecated)]
                 Python::with_gil(|py| {
                     let _ = cb.call1(py, (epoch, total, loss));
                 });
