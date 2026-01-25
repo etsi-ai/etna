@@ -5,7 +5,6 @@ Uses mocking to bypass Rust backend compilation requirement.
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-from io import StringIO
 
 # Add project root to path
 ROOT = Path(__file__).resolve().parents[1]
