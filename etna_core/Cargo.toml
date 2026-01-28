@@ -3,7 +3,9 @@ name = "etna_rust"
 version = "0.1.0"
 edition = "2021"
 authors = ["ETNA Team"]
-description = "Rust core for ETNA: pure neural network backend"
+description = "High-performance core for the etsi-etna library"
+repository = "https://github.com/etsi-ai/etna"
+homepage = "https://github.com/etsi-ai/etna"
 license = "BSD-2-Clause"
 
 [lib]

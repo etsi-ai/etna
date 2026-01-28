@@ -29,10 +29,10 @@ pub enum OptimizerType {
 pub struct SimpleNN {
     layers: Vec<LayerWrapper>,
     task_type: TaskType,
-    #[serde(skip)] // Optimizers are typically reset on load/save
     optimizers: Vec<Option<LayerOptimizer>>,
 }
 
+#[derive(Serialize, Deserialize)]
 enum LayerOptimizer {
     SGD(SGD),
     Adam(Adam),
@@ -41,37 +41,38 @@ enum LayerOptimizer {
 impl SimpleNN {
     pub fn new(
         input_dim: usize,
-        hidden_dim: usize,
+        hidden_layers: Vec<usize>,
         output_dim: usize,
         task_code: usize,
         activation: Activation,
     ) -> Self {
-        let task_type = if task_code == 1 {
-            TaskType::Regression
-        } else {
-            TaskType::Classification
-        };
+        let task_type = if task_code == 1 { TaskType::Regression } else { TaskType::Classification };
+        let mut layers = Vec::new();
+        let mut current_in = input_dim;
 
-        // Initialization strategy depends on the activation function
-        let hidden_init = activation.init_strategy();
-        let output_init = InitStrategy::Xavier;
+        // Build the dynamic layer stack
+        for &hidden_dim in &hidden_layers {
+            layers.push(LayerWrapper::Linear(Linear::new_with_init(
+                current_in,
+                hidden_dim,
+                activation.init_strategy(),
+            )));
+            layers.push(LayerWrapper::Activation(ActivationLayer::new(activation)));
+            current_in = hidden_dim;
+        }
 
-        let mut layers = vec![
-            LayerWrapper::Linear(Linear::new_with_init(input_dim, hidden_dim, hidden_init)),
-            LayerWrapper::Activation(ActivationLayer::new(activation)),
-            LayerWrapper::Linear(Linear::new_with_init(hidden_dim, output_dim, output_init)),
-        ];
+        // Output Layer
+        layers.push(LayerWrapper::Linear(Linear::new_with_init(
+            current_in,
+            output_dim,
+            InitStrategy::Xavier,
+        )));
 
-        // Only apply Softmax for Classification
         if task_type == TaskType::Classification {
             layers.push(LayerWrapper::Softmax(SoftmaxLayer::new()));
         }
 
-        Self {
-            layers,
-            task_type,
-            optimizers: vec![],
-        }
+        Self { layers, task_type, optimizers: vec![] }
     }
 
     /// Forward pass (used by both training and prediction)
@@ -230,7 +231,7 @@ mod tests {
     fn training_loss_decreases_with_minibatch() {
         let mut model = SimpleNN::new(
             2, // input_dim
-            4, // hidden_dim
+            vec![4], // hidden_layers
             1, // output_dim
             1, // regression task
             Activation::ReLU,
