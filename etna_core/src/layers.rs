@@ -1,6 +1,6 @@
 use rand::Rng;
 use serde::{Serialize, Deserialize};
-use crate::optimizer::{SGD, Adam};
+use crate::optimizer::{Adam, Sgd};
 
 /// Weight initialization strategy
 /// - Xavier (Glorot): For layers followed by Sigmoid/Softmax. std = sqrt(2 / (n_in + n_out))
@@ -16,14 +16,14 @@ pub enum InitStrategy {
 struct Softmax;
 
 impl Softmax {
-    fn forward(logits: &Vec<f32>) -> Vec<f32> {
+    fn forward(logits: &[f32]) -> Vec<f32> {
         let max_val = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
         let exp_vals: Vec<f32> = logits.iter().map(|x| (x - max_val).exp()).collect();
         let sum_exp: f32 = exp_vals.iter().sum();
         exp_vals.iter().map(|x| x / sum_exp).collect()
     }
 
-    fn backward(preds: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+    fn backward(preds: &[Vec<f32>], y: &[Vec<f32>]) -> Vec<Vec<f32>> {
         preds.iter().zip(y.iter())
             .map(|(p, t)| p.iter().zip(t.iter()).map(|(a, b)| a - b).collect())
             .collect()
@@ -33,13 +33,13 @@ impl Softmax {
 /// Unified trait for all model layers
 pub trait Layer {
     /// Forward pass through the layer
-    fn forward(&mut self, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>>;
+    fn forward(&mut self, input: &[Vec<f32>]) -> Vec<Vec<f32>>;
 
     /// Backward pass through the layer (backpropagation)
-    fn backward(&mut self, grad_output: &Vec<Vec<f32>>) -> Vec<Vec<f32>>;
+    fn backward(&mut self, grad_output: &[Vec<f32>]) -> Vec<Vec<f32>>;
 
-    /// Update layer parameters using SGD
-    fn update_sgd(&mut self, _optimizer: &SGD) {}
+    /// Update layer parameters using Sgd
+    fn update_sgd(&mut self, _optimizer: &Sgd) {}
 
     /// Update layer parameters using Adam
     fn update_adam(&mut self, _optimizer: &mut Adam) {}
@@ -112,8 +112,8 @@ impl Linear {
         (-2.0 * u1.ln()).sqrt() * (2.0 * std::f32::consts::PI * u2).cos()
     }
 
-    pub fn forward(&mut self, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
-        self.cached_input = input.clone();
+    pub fn forward(&mut self, input: &[Vec<f32>]) -> Vec<Vec<f32>> {
+        self.cached_input = input.to_owned();
 
         input.iter().map(|x| {
             self.weights.iter().enumerate().map(|(i, w)| {
@@ -122,26 +122,34 @@ impl Linear {
         }).collect()
     }
 
-    pub fn backward(&mut self, grad_output: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+    pub fn backward(&mut self, grad_output: &[Vec<f32>]) -> Vec<Vec<f32>> {
         let batch_size = self.cached_input.len();
         let input_size = self.cached_input[0].len();
 
         let mut grad_input = vec![vec![0.0; input_size]; batch_size];
 
-        for i in 0..batch_size {
-            for j in 0..self.weights.len() {
-                self.grad_bias[j] += grad_output[i][j];
-                for k in 0..input_size {
-                    self.grad_weights[j][k] += grad_output[i][j] * self.cached_input[i][k];
-                    grad_input[i][k] += grad_output[i][j] * self.weights[j][k];
+        for (i, grad_in_row) in grad_input.iter_mut().enumerate() {
+            let go_row = &grad_output[i];
+            let cached_row = &self.cached_input[i];
+            for (j, (grad_w_row, weight_row)) in self
+                .grad_weights
+                .iter_mut()
+                .zip(self.weights.iter())
+                .enumerate()
+            {
+                let g = go_row[j];
+                self.grad_bias[j] += g;
+                for (k, (gw, w)) in grad_w_row.iter_mut().zip(weight_row.iter()).enumerate() {
+                    *gw += g * cached_row[k];
+                    grad_in_row[k] += g * w;
                 }
             }
         }
         grad_input
     }
 
-    /// Update weights using SGD
-    pub fn update_sgd(&mut self, optimizer: &SGD) {
+    /// Update weights using Sgd
+    pub fn update_sgd(&mut self, optimizer: &Sgd) {
         for i in 0..self.weights.len() {
             for j in 0..self.weights[0].len() {
                 // L2 regularization: add lambda * weight to gradient
@@ -172,15 +180,15 @@ impl Linear {
 }
 
 impl Layer for Linear {
-    fn forward(&mut self, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+    fn forward(&mut self, input: &[Vec<f32>]) -> Vec<Vec<f32>> {
         self.forward(input)
     }
 
-    fn backward(&mut self, grad_output: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+    fn backward(&mut self, grad_output: &[Vec<f32>]) -> Vec<Vec<f32>> {
         self.backward(grad_output)
     }
 
-    fn update_sgd(&mut self, optimizer: &SGD) {
+    fn update_sgd(&mut self, optimizer: &Sgd) {
         self.update_sgd(optimizer)
     }
 
@@ -196,11 +204,11 @@ impl Layer for Linear {
 pub struct ReLU;
 
 impl ReLU {
-    pub fn forward(input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+    pub fn forward(input: &[Vec<f32>]) -> Vec<Vec<f32>> {
         input.iter().map(|x| x.iter().map(|&v| v.max(0.0)).collect()).collect()
     }
 
-    pub fn backward(grad: &Vec<Vec<f32>>, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+    pub fn backward(grad: &[Vec<f32>], input: &[Vec<f32>]) -> Vec<Vec<f32>> {
         grad.iter().zip(input.iter())
             .map(|(g, i)| g.iter().zip(i.iter()).map(|(g, v)| if *v > 0.0 { *g } else { 0.0 }).collect())
             .collect()
@@ -217,13 +225,13 @@ pub struct LeakyReLU;
 impl LeakyReLU {
     const ALPHA: f32 = 0.01;
 
-    pub fn forward(input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+    pub fn forward(input: &[Vec<f32>]) -> Vec<Vec<f32>> {
         input.iter().map(|x| {
             x.iter().map(|&v| if v > 0.0 { v } else { Self::ALPHA * v }).collect()
         }).collect()
     }
 
-    pub fn backward(grad: &Vec<Vec<f32>>, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+    pub fn backward(grad: &[Vec<f32>], input: &[Vec<f32>]) -> Vec<Vec<f32>> {
         grad.iter().zip(input.iter())
             .map(|(g, i)| g.iter().zip(i.iter())
                 .map(|(g, v)| if *v > 0.0 { *g } else { Self::ALPHA * *g })
@@ -239,13 +247,13 @@ impl LeakyReLU {
 pub struct Sigmoid;
 
 impl Sigmoid {
-    pub fn forward(input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+    pub fn forward(input: &[Vec<f32>]) -> Vec<Vec<f32>> {
         input.iter().map(|x| {
             x.iter().map(|&v| 1.0 / (1.0 + (-v).exp())).collect()
         }).collect()
     }
 
-    pub fn backward(grad: &Vec<Vec<f32>>, out: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+    pub fn backward(grad: &[Vec<f32>], out: &[Vec<f32>]) -> Vec<Vec<f32>> {
         grad.iter().zip(out.iter())
             .map(|(g, o)| g.iter().zip(o.iter()).map(|(g_val, o_val)| g_val * o_val * (1.0 - o_val)).collect())
             .collect()
@@ -263,7 +271,7 @@ pub enum Activation {
 }
 
 impl Activation {
-    pub fn forward(&self, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+    pub fn forward(&self, input: &[Vec<f32>]) -> Vec<Vec<f32>> {
         match self {
             Self::ReLU => ReLU::forward(input),
             Self::LeakyReLU => LeakyReLU::forward(input),
@@ -271,7 +279,7 @@ impl Activation {
         }
     }
 
-    pub fn backward(&self, grad: &Vec<Vec<f32>>, cache: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+    pub fn backward(&self, grad: &[Vec<f32>], cache: &[Vec<f32>]) -> Vec<Vec<f32>> {
         match self {
             Self::ReLU => ReLU::backward(grad, cache),
             Self::LeakyReLU => LeakyReLU::backward(grad, cache),
@@ -307,17 +315,17 @@ impl ActivationLayer {
 }
 
 impl Layer for ActivationLayer {
-    fn forward(&mut self, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+    fn forward(&mut self, input: &[Vec<f32>]) -> Vec<Vec<f32>> {
         let output = self.activation.forward(input);
         // Sigmoid backward needs output, ReLU/LeakyReLU need input
         match self.activation {
             Activation::Sigmoid => self.cached_data = output.clone(),
-            _ => self.cached_data = input.clone(),
+            _ => self.cached_data = input.to_owned(),
         }
         output
     }
 
-    fn backward(&mut self, grad_output: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+    fn backward(&mut self, grad_output: &[Vec<f32>]) -> Vec<Vec<f32>> {
         self.activation.backward(grad_output, &self.cached_data)
     }
 }
@@ -335,13 +343,13 @@ impl SoftmaxLayer {
 }
 
 impl Layer for SoftmaxLayer {
-    fn forward(&mut self, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+    fn forward(&mut self, input: &[Vec<f32>]) -> Vec<Vec<f32>> {
         let output = input.iter().map(|l| Softmax::forward(l)).collect();
         self.cached_output = output;
         self.cached_output.clone()
     }
 
-    fn backward(&mut self, grad_output: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+    fn backward(&mut self, grad_output: &[Vec<f32>]) -> Vec<Vec<f32>> {
         // Note: For the output layer, grad_output is expected to be the targets (Y)
         // due to the specific implementation of Softmax::backward returning (preds - targets)
         Softmax::backward(&self.cached_output, grad_output)
@@ -358,7 +366,7 @@ pub enum LayerWrapper {
 }
 
 impl Layer for LayerWrapper {
-    fn forward(&mut self, input: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+    fn forward(&mut self, input: &[Vec<f32>]) -> Vec<Vec<f32>> {
         match self {
             Self::Linear(l) => l.forward(input),
             Self::Activation(a) => a.forward(input),
@@ -366,7 +374,7 @@ impl Layer for LayerWrapper {
         }
     }
 
-    fn backward(&mut self, grad_output: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+    fn backward(&mut self, grad_output: &[Vec<f32>]) -> Vec<Vec<f32>> {
         match self {
             Self::Linear(l) => l.backward(grad_output),
             Self::Activation(a) => a.backward(grad_output),
@@ -374,7 +382,7 @@ impl Layer for LayerWrapper {
         }
     }
 
-    fn update_sgd(&mut self, optimizer: &SGD) {
+    fn update_sgd(&mut self, optimizer: &Sgd) {
         if let Self::Linear(l) = self {
             l.update_sgd(optimizer);
         }

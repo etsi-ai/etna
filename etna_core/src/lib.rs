@@ -9,15 +9,13 @@ use pyo3::prelude::*;
 use pyo3::types::PyList;
 
 use crate::layers::Activation;
-use crate::model::SimpleNN;
-use crate::model::OptimizerType;
+use crate::model::{OptimizerType, SimpleNN, TrainConfig};
 
 /// Safe conversion helper
 fn pylist_to_vec2(pylist: &Bound<'_, PyList>) -> PyResult<Vec<Vec<f32>>> {
     pylist.iter()
         .map(|item| item.extract::<Vec<f32>>())
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e)
 }
 
 /// Python Class Wrapper
@@ -49,6 +47,7 @@ impl EtnaModel {
     }
 
     #[pyo3(signature = (x, y, epochs, lr, batch_size=32, weight_decay=0.0, optimizer="sgd"))]
+    #[allow(clippy::too_many_arguments)]
     fn train(
         &mut self,
         x: &Bound<'_, PyList>,
@@ -63,19 +62,19 @@ impl EtnaModel {
         let y_vec = pylist_to_vec2(y)?;
         let optimizer_type = match optimizer {
             "adam" => OptimizerType::Adam,
-            _ => OptimizerType::SGD,
+            _ => OptimizerType::Sgd,
         };
 
     // Capture the history returned by Rust
-    let history = self.inner.train(
-        &x_vec,
-        &y_vec,
+    let history = self.inner.train(TrainConfig {
+        x: &x_vec,
+        y: &y_vec,
         epochs,
         lr,
         weight_decay,
         optimizer_type,
         batch_size,
-    );
+    });
 
         // Return it to Python
         Ok(history)
