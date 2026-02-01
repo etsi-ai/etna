@@ -87,6 +87,7 @@ impl SimpleNN {
     }
 
     /// Train the network using mandatory mini-batch training
+    /// Delegates to train_with_callback with a default print-based progress callback
     #[allow(dead_code)]
     pub fn train(
         &mut self,
@@ -98,91 +99,21 @@ impl SimpleNN {
         optimizer_type: OptimizerType,
         batch_size: usize,
     ) -> Vec<f32> {
-        let mut loss_history = Vec::new();
-
-        // Initialize optimizers ONLY if they don't exist yet
-        if self.optimizers.is_empty() {
-            self.optimizers = self.layers.iter().map(|l| {
-                if let LayerWrapper::Linear(_) = l {
-                    match optimizer_type {
-                        OptimizerType::SGD => Some(LayerOptimizer::SGD(if weight_decay > 0.0 {
-                            SGD::with_weight_decay(lr, weight_decay)
-                        } else {
-                            SGD::new(lr)
-                        })),
-                        OptimizerType::Adam => Some(LayerOptimizer::Adam(Adam::new(lr, 0.9, 0.999, 1e-8))),
-                    }
-                } else {
-                    None
+        // Delegate to train_with_callback with a default print callback
+        self.train_with_callback(
+            x,
+            y,
+            epochs,
+            lr,
+            weight_decay,
+            optimizer_type,
+            batch_size,
+            |epoch, total, loss| {
+                if epoch % 10 == 0 {
+                    println!("Epoch {}/{} - Loss: {:.4}", epoch, total, loss);
                 }
-            }).collect();
-        }
-
-        for epoch in 0..epochs {
-            // ---- Shuffle data at the start of each epoch ----
-            let mut indices: Vec<usize> = (0..x.len()).collect();
-            indices.shuffle(&mut rng());
-
-            let mut epoch_loss = 0.0;
-            let mut batch_count = 0;
-
-            // Iterate over shuffled data using fixed-size mini-batches
-
-            for batch_start in (0..x.len()).step_by(batch_size) {
-                let batch_end = (batch_start + batch_size).min(x.len());
-                let batch_indices = &indices[batch_start..batch_end];
-
-                let x_batch: Vec<Vec<f32>> = batch_indices.iter().map(|&i| x[i].clone()).collect();
-                let y_batch: Vec<Vec<f32>> = batch_indices.iter().map(|&i| y[i].clone()).collect();
-
-                let preds = self.forward(&x_batch);
-
-                let (loss, grad_output) = match self.task_type {
-                    TaskType::Classification => {
-                        let loss_val = cross_entropy(&preds, &y_batch);
-                        // For classification, the last layer is Softmax,
-                        // which expects targets for backward pass to compute (preds - target)
-                        (loss_val, y_batch)
-                    }
-                    TaskType::Regression => {
-                        let loss_val = mse(&preds, &y_batch);
-                        // For regression, dL/dpreds = preds - target
-                        let grad = preds.iter().zip(y_batch.iter())
-                            .map(|(p_row, y_row)| p_row.iter().zip(y_row.iter()).map(|(p, t)| p - t).collect())
-                            .collect();
-                        (loss_val, grad)
-                    }
-                };
-
-                // ---- Backward pass (Reverse iteration) ----
-                let mut current_grad = grad_output;
-                for layer in self.layers.iter_mut().rev() {
-                    current_grad = layer.backward(&current_grad);
-                }
-
-                // ---- Parameter update ----
-                for (layer, opt) in self.layers.iter_mut().zip(self.optimizers.iter_mut()) {
-                    if let Some(ref mut o) = opt {
-                        match o {
-                            LayerOptimizer::SGD(s) => layer.update_sgd(s),
-                            LayerOptimizer::Adam(a) => layer.update_adam(a),
-                        }
-                    }
-                }
-
-                epoch_loss += loss;
-                batch_count += 1;
-            }
-
-            let avg_loss = epoch_loss / batch_count as f32;
-            loss_history.push(avg_loss);
-
-            if epoch % 10 == 0 {
-                println!("Epoch {}/{} - Loss: {:.4}", epoch, epochs, avg_loss);
-            }
-        }
-
-        loss_history
+            },
+        )
     }
 
     /// Train the network with a progress callback
