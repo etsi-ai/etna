@@ -8,7 +8,7 @@ import pandas as pd
 mock_rust_module = MagicMock()
 
 mock_model_instance = MagicMock()
-mock_model_instance.train.return_value = [0.1]
+mock_model_instance.train.return_value = ([0.1], [])  # Return tuple: (train_losses, val_losses)
 mock_model_instance.predict.return_value = [0, 1, 0]
 
 # IMPORTANT: simulate Rust writing a model file

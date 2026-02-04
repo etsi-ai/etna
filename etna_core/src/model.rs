@@ -1,10 +1,10 @@
-// Model training / prediction logic
-// Implements a simple 2-layer neural network with mandatory mini-batch training
+// Model training/prediction logic
+
+// Implements a simple neural network with mandatory mini-batch training and validation support
 
 use crate::layers::{Activation, InitStrategy, Linear, Layer, LayerWrapper, ActivationLayer, SoftmaxLayer};
 use crate::loss_function::{cross_entropy, mse};
 use crate::optimizer::{Adam, SGD};
-
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{Read, Write};
@@ -47,6 +47,7 @@ impl SimpleNN {
         activation: Activation,
     ) -> Self {
         let task_type = if task_code == 1 { TaskType::Regression } else { TaskType::Classification };
+
         let mut layers = Vec::new();
         let mut current_in = input_dim;
 
@@ -72,21 +73,23 @@ impl SimpleNN {
             layers.push(LayerWrapper::Softmax(SoftmaxLayer::new()));
         }
 
-        Self { layers, task_type, optimizers: vec![] }
+        Self { 
+            layers, 
+            task_type, 
+            optimizers: vec![] 
+        }
     }
 
     /// Forward pass (used by both training and prediction)
     pub fn forward(&mut self, x: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
         let mut current_input = x.clone();
-
         for layer in &mut self.layers {
             current_input = layer.forward(&current_input);
         }
-
         current_input
     }
 
-    /// Train the network using mandatory mini-batch training
+    /// Train the network using mandatory mini-batch training with validation support
     pub fn train(
         &mut self,
         x: &Vec<Vec<f32>>,
@@ -96,10 +99,13 @@ impl SimpleNN {
         weight_decay: f32,
         optimizer_type: OptimizerType,
         batch_size: usize,
-    ) -> Vec<f32> {
+        x_val: Option<&Vec<Vec<f32>>>,
+        y_val: Option<&Vec<Vec<f32>>>,
+    ) -> (Vec<f32>, Vec<f32>) {
         let mut loss_history = Vec::new();
+        let mut val_loss_history = Vec::new();
 
-        // Initialize optimizers ONLY if they don't exist yet
+        // Initialize optimizers ONLY if they don't exist yet (persistent across epochs)
         if self.optimizers.is_empty() {
             self.optimizers = self.layers.iter().map(|l| {
                 if let LayerWrapper::Linear(_) = l {
@@ -126,7 +132,6 @@ impl SimpleNN {
             let mut batch_count = 0;
 
             // Iterate over shuffled data using fixed-size mini-batches
-
             for batch_start in (0..x.len()).step_by(batch_size) {
                 let batch_end = (batch_start + batch_size).min(x.len());
                 let batch_indices = &indices[batch_start..batch_end];
@@ -176,19 +181,38 @@ impl SimpleNN {
             let avg_loss = epoch_loss / batch_count as f32;
             loss_history.push(avg_loss);
 
-            if epoch % 10 == 0 {
-                println!("Epoch {}/{} - Loss: {:.4}", epoch, epochs, avg_loss);
+            // Calculate validation loss if validation data is provided
+            if let (Some(x_val_data), Some(y_val_data)) = (x_val, y_val) {
+                if !x_val_data.is_empty() && !y_val_data.is_empty() {
+                    let val_preds = self.forward(x_val_data);
+                    let val_loss = match self.task_type {
+                        TaskType::Classification => cross_entropy(&val_preds, y_val_data),
+                        TaskType::Regression => mse(&val_preds, y_val_data),
+                    };
+                    val_loss_history.push(val_loss);
+                    
+                    if epoch % 10 == 0 {
+                        println!("Epoch {}/{} - Loss: {:.4}, Val Loss: {:.4}", epoch, epochs, avg_loss, val_loss);
+                    }
+                } else {
+                    val_loss_history.push(f32::INFINITY);
+                    if epoch % 10 == 0 {
+                        println!("Epoch {}/{} - Loss: {:.4}", epoch, epochs, avg_loss);
+                    }
+                }
+            } else {
+                if epoch % 10 == 0 {
+                    println!("Epoch {}/{} - Loss: {:.4}", epoch, epochs, avg_loss);
+                }
             }
         }
 
-        loss_history
+        (loss_history, val_loss_history) // Return both training and validation loss histories
     }
 
     /// Run inference on input data (no gradient tracking)
-
     pub fn predict(&mut self, x: &Vec<Vec<f32>>) -> Vec<f32> {
         let output = self.forward(x);
-
         match self.task_type {
             TaskType::Classification => output
                 .iter()
@@ -219,6 +243,7 @@ impl SimpleNN {
         Ok(model)
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -243,10 +268,9 @@ mod tests {
             vec![1.0, 0.0],
             vec![1.0, 1.0],
         ];
-
         let y = vec![vec![0.0], vec![1.0], vec![1.0], vec![0.0]];
 
-        let losses = model.train(
+        let (losses, _) = model.train(
             &x,
             &y,
             50,                 // epochs
@@ -254,6 +278,8 @@ mod tests {
             0.0,                // weight decay
             OptimizerType::SGD, // optimizer
             2,                  // batch size
+            None,               // x_val
+            None,               // y_val
         );
 
         // Ensure training progresses in the right direction
@@ -263,3 +289,4 @@ mod tests {
         );
     }
 }
+
