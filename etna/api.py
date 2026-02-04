@@ -40,10 +40,6 @@ class Model:
         # Store architecture parameters
         self.hidden_layers = hidden_layers
         self.activation = activation
-
-        # --- UPDATE TO NEW ARCHITECTURE ---
-        self.hidden_layers = hidden_layers  # Use the list, not hidden_dim
-        self.activation = activation
         
         # Determine task type
         if task_type:
@@ -107,7 +103,6 @@ class Model:
             self.rust_model = _etna_rust.EtnaModel(
                 self.input_dim,
                 self.hidden_layers,  
-                self.hidden_layers,
                 self.output_dim,
                 self.task_code,
                 self.activation
