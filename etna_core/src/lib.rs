@@ -6,8 +6,7 @@ mod model;
 mod layers;
 mod loss_function;
 mod optimizer;
-mod softmax;
-mod utils; 
+
 
 use pyo3::prelude::*;
 use pyo3::types::PyList;
@@ -47,11 +46,8 @@ impl EtnaModel {
             _ => Activation::ReLU,
         };
 
-        // Use first hidden layer size (TODO: support multiple layers when SimpleNN is updated)
-        let hidden_dim = hidden_layers.first().copied().unwrap_or(16);
-
         EtnaModel {
-            inner: SimpleNN::new(input_dim, hidden_dim, output_dim, task_type, act),
+            inner: SimpleNN::new(input_dim, hidden_layers, output_dim, task_type, act),
         }
     }
 
