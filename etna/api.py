@@ -5,7 +5,7 @@ import json
 ##import mlflow
 import pandas as pd
 import numpy as np
-
+from etna.utils import set_seed
 from .utils import load_data
 from .preprocessing import Preprocessor
 
@@ -17,23 +17,30 @@ except ImportError:
 
 
 class Model:
-    def __init__(self, file_path: str, target: str, task_type: str = None, hidden_layers: list = [16], activation: str = "relu"):
+    def __init__(self, file_path: str, target: str, task_type: str = None, hidden_layers: list = [64, 32], activation: str = "relu", seed: int = None):
         """
         Initializes the ETNA model.
         Args:
             file_path: Path to the .csv dataset
             target: Name of the target column
             task_type: 'classification', 'regression', or None (auto-detect)
+            hidden_layers: List of neurons per hidden layer (e.g., [64, 32])
+            seed: Optional random seed for reproducibility
         """
         self.file_path = file_path
         self.target = target
         self.df = load_data(file_path)
         self.loss_history = []
 
+        # --- SEED LOGIC ---
+        self.seed = seed
+        if seed is not None:
+            set_seed(seed)
+        # ----------------------------
         # Store architecture parameters
         self.hidden_layers = hidden_layers
         self.activation = activation
-
+        
         # Determine task type
         if task_type:
             self.task_type = task_type.lower()
@@ -89,15 +96,17 @@ class Model:
         if optimizer_lower not in ['sgd', 'adam']:
             raise ValueError(f"Unsupported optimizer '{optimizer}'. Choose 'sgd' or 'adam'.")
 
+        # LOGICAL FIX: Only initialize if model doesn't exist
         # Only initialize if model doesn't exist (supports incremental training)
         if self.rust_model is None:
             print(f"🚀 Initializing Rust Core [In: {self.input_dim}, Out: {self.output_dim}]...")
             self.rust_model = _etna_rust.EtnaModel(
                 self.input_dim,
-                self.hidden_layers,
+                self.hidden_layers,  
                 self.output_dim,
                 self.task_code,
                 self.activation
+                # TODO: Pass self.seed here once the Rust core supports it
             )
         else:
             print(f"🔄 Resuming training on existing Core [In: {self.input_dim}, Out: {self.output_dim}]...")
