@@ -87,6 +87,8 @@ impl SimpleNN {
     }
 
     /// Train the network using mandatory mini-batch training
+    /// Delegates to train_with_callback with a default print-based progress callback
+    #[allow(dead_code)]
     pub fn train(
         &mut self,
         x: &Vec<Vec<f32>>,
@@ -97,6 +99,39 @@ impl SimpleNN {
         optimizer_type: OptimizerType,
         batch_size: usize,
     ) -> Vec<f32> {
+        // Delegate to train_with_callback with a default print callback
+        self.train_with_callback(
+            x,
+            y,
+            epochs,
+            lr,
+            weight_decay,
+            optimizer_type,
+            batch_size,
+            |epoch, total, loss| {
+                if epoch % 10 == 0 {
+                    println!("Epoch {}/{} - Loss: {:.4}", epoch, total, loss);
+                }
+            },
+        )
+    }
+
+    /// Train the network with a progress callback
+    /// The callback is called after each epoch with (epoch, total_epochs, loss)
+    pub fn train_with_callback<F>(
+        &mut self,
+        x: &Vec<Vec<f32>>,
+        y: &Vec<Vec<f32>>,
+        epochs: usize,
+        lr: f32,
+        weight_decay: f32,
+        optimizer_type: OptimizerType,
+        batch_size: usize,
+        progress_callback: F,
+    ) -> Vec<f32>
+    where
+        F: Fn(usize, usize, f32),
+    {
         let mut loss_history = Vec::new();
 
         // Initialize optimizers ONLY if they don't exist yet
@@ -126,7 +161,6 @@ impl SimpleNN {
             let mut batch_count = 0;
 
             // Iterate over shuffled data using fixed-size mini-batches
-
             for batch_start in (0..x.len()).step_by(batch_size) {
                 let batch_end = (batch_start + batch_size).min(x.len());
                 let batch_indices = &indices[batch_start..batch_end];
@@ -139,13 +173,10 @@ impl SimpleNN {
                 let (loss, grad_output) = match self.task_type {
                     TaskType::Classification => {
                         let loss_val = cross_entropy(&preds, &y_batch);
-                        // For classification, the last layer is Softmax,
-                        // which expects targets for backward pass to compute (preds - target)
                         (loss_val, y_batch)
                     }
                     TaskType::Regression => {
                         let loss_val = mse(&preds, &y_batch);
-                        // For regression, dL/dpreds = preds - target
                         let grad = preds.iter().zip(y_batch.iter())
                             .map(|(p_row, y_row)| p_row.iter().zip(y_row.iter()).map(|(p, t)| p - t).collect())
                             .collect();
@@ -176,9 +207,8 @@ impl SimpleNN {
             let avg_loss = epoch_loss / batch_count as f32;
             loss_history.push(avg_loss);
 
-            if epoch % 10 == 0 {
-                println!("Epoch {}/{} - Loss: {:.4}", epoch, epochs, avg_loss);
-            }
+            // Call the progress callback instead of printing
+            progress_callback(epoch, epochs, avg_loss);
         }
 
         loss_history

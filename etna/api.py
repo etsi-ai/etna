@@ -8,6 +8,7 @@ import numpy as np
 from etna.utils import set_seed
 from .utils import load_data
 from .preprocessing import Preprocessor
+from tqdm import tqdm
 
 # Safe Rust import
 try:
@@ -83,7 +84,7 @@ class Model:
                 "before calling model.train()."
             )
 
-        print("⚙️  Preprocessing data...")
+        print("[*] Preprocessing data...")
         X, y = self.preprocessor.fit_transform(self.df, self.target)
 
         # Cache training data for predict() without arguments
@@ -99,7 +100,7 @@ class Model:
         # LOGICAL FIX: Only initialize if model doesn't exist
         # Only initialize if model doesn't exist (supports incremental training)
         if self.rust_model is None:
-            print(f"🚀 Initializing Rust Core [In: {self.input_dim}, Out: {self.output_dim}]...")
+            print(f"[*] Initializing Rust Core [In: {self.input_dim}, Out: {self.output_dim}]...")
             self.rust_model = _etna_rust.EtnaModel(
                 self.input_dim,
                 self.hidden_layers,  
@@ -109,20 +110,31 @@ class Model:
                 # TODO: Pass self.seed here once the Rust core supports it
             )
         else:
-            print(f"🔄 Resuming training on existing Core [In: {self.input_dim}, Out: {self.output_dim}]...")
+            print(f"[*] Resuming training on existing Core [In: {self.input_dim}, Out: {self.output_dim}]...")
 
         optimizer_display = optimizer_lower.upper()
         if weight_decay > 0:
-            print(f"🔥 Training started (Optimizer: {optimizer_display}, L2 regularization: λ={weight_decay})...")
+            print(f"[*] Training started (Optimizer: {optimizer_display}, L2 regularization: lambda={weight_decay})...")
         else:
-            print(f"🔥 Training started (Optimizer: {optimizer_display})...")
+            print(f"[*] Training started (Optimizer: {optimizer_display})...")
 
-        # Pass optimizer string to Rust backend (it will default to SGD if None or invalid)
-        new_losses = self.rust_model.train(X, y, epochs, lr, batch_size, weight_decay, optimizer_lower)
-
-        # Extend history instead of overwriting it
+        # Create tqdm progress bar
+        pbar = tqdm(total=epochs, desc="Training", unit="epoch")
+        
+        # Callback function that Rust calls after each epoch
+        def progress_callback(epoch, total, loss):
+            pbar.update(1)
+            pbar.set_description(f"Loss: {loss:.4f}")
+        
+        # Single Rust call - training loop stays in Rust for performance
+        new_losses = self.rust_model.train(
+            X, y, epochs, lr, batch_size, weight_decay, 
+            optimizer_lower, progress_callback=progress_callback
+        )
+        
+        pbar.close()
         self.loss_history.extend(new_losses)
-        print("✅ Training complete!")
+        print("[+] Training complete!")
 
     def predict(self, data_path: str = None):
         """
@@ -258,7 +270,7 @@ class Model:
                 f"Missing preprocessor state file: {preprocessor_path}"
             )
 
-        print(f"📂 Loading model from {path}...")
+        print(f"[*] Loading model from {path}...")
 
         # Create instance without __init__
         self = cls.__new__(cls)
@@ -285,5 +297,5 @@ class Model:
         self.df = None
         self.loss_history = []
 
-        print("✅ Model loaded successfully!")
+        print("[+] Model loaded successfully!")
         return self
