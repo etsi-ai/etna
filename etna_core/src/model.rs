@@ -69,7 +69,6 @@ impl SimpleNN {
         let mut layers = Vec::new();
         let mut current_in = input_dim;
 
-        // Build the dynamic layer stack
         for &hidden_dim in &hidden_layers {
             layers.push(LayerWrapper::Linear(Linear::new_with_init(
                 current_in,
@@ -80,7 +79,6 @@ impl SimpleNN {
             current_in = hidden_dim;
         }
 
-        // Output layer
         layers.push(LayerWrapper::Linear(Linear::new_with_init(
             current_in,
             output_dim,
@@ -98,7 +96,6 @@ impl SimpleNN {
         }
     }
 
-    /// Forward pass (used by both training and prediction)
     pub fn forward(&mut self, x: &[Vec<f32>]) -> Vec<Vec<f32>> {
         let mut current_input = x.to_owned();
 
@@ -109,7 +106,6 @@ impl SimpleNN {
         current_input
     }
 
-    /// Train the network using mandatory mini-batch training
     pub fn train(&mut self, config: TrainConfig<'_>) -> Vec<f32> {
         let TrainConfig {
             x,
@@ -121,7 +117,6 @@ impl SimpleNN {
             batch_size,
         } = config;
 
-        // Delegate to callback-based trainer with a no-op callback
         self.train_with_callback(
             x,
             y,
@@ -134,12 +129,10 @@ impl SimpleNN {
         )
     }
 
-    /// Train the network with a progress callback
-    /// The callback is called after each epoch with (epoch, total_epochs, loss)
     pub fn train_with_callback<F>(
         &mut self,
-        x: &Vec<Vec<f32>>,
-        y: &Vec<Vec<f32>>,
+        x: &[Vec<f32>],
+        y: &[Vec<f32>],
         epochs: usize,
         lr: f32,
         weight_decay: f32,
@@ -152,7 +145,6 @@ impl SimpleNN {
     {
         let mut loss_history = Vec::new();
 
-        // Initialize optimizers ONLY if they don't exist yet
         if self.optimizers.is_empty() {
             self.optimizers = self
                 .layers
@@ -177,14 +169,12 @@ impl SimpleNN {
         }
 
         for epoch in 0..epochs {
-            // ---- Shuffle data at the start of each epoch ----
             let mut indices: Vec<usize> = (0..x.len()).collect();
             indices.shuffle(&mut rng());
 
             let mut epoch_loss = 0.0;
             let mut batch_count = 0;
 
-            // Iterate over shuffled data using fixed-size mini-batches
             for batch_start in (0..x.len()).step_by(batch_size) {
                 let batch_end = (batch_start + batch_size).min(x.len());
                 let batch_indices = &indices[batch_start..batch_end];
@@ -218,13 +208,11 @@ impl SimpleNN {
                     }
                 };
 
-                // ---- Backward pass ----
                 let mut current_grad = grad_output;
                 for layer in self.layers.iter_mut().rev() {
                     current_grad = layer.backward(&current_grad);
                 }
 
-                // ---- Parameter update ----
                 for (layer, opt) in self.layers.iter_mut().zip(self.optimizers.iter_mut()) {
                     if let Some(ref mut o) = opt {
                         match o {
@@ -247,7 +235,6 @@ impl SimpleNN {
         loss_history
     }
 
-    /// Run inference on input data (no gradient tracking)
     pub fn predict(&mut self, x: &[Vec<f32>]) -> Vec<f32> {
         let output = self.forward(x);
 
@@ -286,16 +273,9 @@ impl SimpleNN {
 mod tests {
     use super::*;
 
-    /// Verifies that mini-batch training reduces loss over time.
     #[test]
     fn training_loss_decreases_with_minibatch() {
-        let mut model = SimpleNN::new(
-            2,
-            vec![4],
-            1,
-            1,
-            Activation::ReLU,
-        );
+        let mut model = SimpleNN::new(2, vec![4], 1, 1, Activation::ReLU);
 
         let x = vec![
             vec![0.0, 0.0],
