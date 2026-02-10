@@ -10,15 +10,14 @@ use pyo3::types::PyList;
 use pyo3::Py;
 
 use crate::layers::Activation;
-use crate::model::SimpleNN;
-use crate::model::OptimizerType;
+use crate::model::{OptimizerType, SimpleNN};
 
 /// Safe conversion helper
 fn pylist_to_vec2(pylist: &Bound<'_, PyList>) -> PyResult<Vec<Vec<f32>>> {
-    pylist.iter()
+    pylist
+        .iter()
         .map(|item| item.extract::<Vec<f32>>())
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e)
 }
 
 /// Python Class Wrapper
@@ -50,6 +49,7 @@ impl EtnaModel {
     }
 
     #[pyo3(signature = (x, y, epochs, lr, batch_size=32, weight_decay=0.0, optimizer="sgd", progress_callback=None))]
+    #[allow(clippy::too_many_arguments)]
     fn train(
         &mut self,
         py: Python<'_>,
@@ -64,21 +64,20 @@ impl EtnaModel {
     ) -> PyResult<Vec<f32>> {
         let x_vec = pylist_to_vec2(x)?;
         let y_vec = pylist_to_vec2(y)?;
+
         let optimizer_type = match optimizer {
             "adam" => OptimizerType::Adam,
-            _ => OptimizerType::SGD,
+            _ => OptimizerType::Sgd,
         };
 
-        // Create a closure that calls the Python callback if provided
-        // We capture 'py' from the environment, which is safe because the callback
-        // is executed synchronously within this function's scope.
+        // Create a closure that calls the Python callback if provided.
+        // The callback is executed synchronously inside this function.
         let callback = |epoch: usize, total: usize, loss: f32| {
             if let Some(ref cb) = progress_callback {
                 let _ = cb.call1(py, (epoch, total, loss));
             }
         };
 
-        // Training loop stays in Rust - pass callback for progress reporting
         let history = self.inner.train_with_callback(
             &x_vec,
             &y_vec,
@@ -90,7 +89,6 @@ impl EtnaModel {
             callback,
         );
 
-        // Return loss history to Python
         Ok(history)
     }
 
@@ -111,6 +109,7 @@ impl EtnaModel {
         let inner = SimpleNN::load(&path).map_err(|e| {
             pyo3::exceptions::PyIOError::new_err(format!("Failed to load model: {}", e))
         })?;
+
         Ok(Self { inner })
     }
 }

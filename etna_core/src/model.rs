@@ -3,7 +3,7 @@
 
 use crate::layers::{Activation, InitStrategy, Linear, Layer, LayerWrapper, ActivationLayer, SoftmaxLayer};
 use crate::loss_function::{cross_entropy, mse};
-use crate::optimizer::{Adam, SGD};
+use crate::optimizer::{Adam, Sgd};
 
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -21,7 +21,7 @@ pub enum TaskType {
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum OptimizerType {
-    SGD,
+    Sgd,
     Adam,
 }
 
@@ -34,7 +34,7 @@ pub struct SimpleNN {
 
 #[derive(Serialize, Deserialize)]
 enum LayerOptimizer {
-    SGD(SGD),
+    Sgd(Sgd),
     Adam(Adam),
 }
 
@@ -139,10 +139,10 @@ impl SimpleNN {
             self.optimizers = self.layers.iter().map(|l| {
                 if let LayerWrapper::Linear(_) = l {
                     match optimizer_type {
-                        OptimizerType::SGD => Some(LayerOptimizer::SGD(if weight_decay > 0.0 {
-                            SGD::with_weight_decay(lr, weight_decay)
+                        OptimizerType::Sgd => Some(LayerOptimizer::Sgd(if weight_decay > 0.0 {
+                            Sgd::with_weight_decay(lr, weight_decay)
                         } else {
-                            SGD::new(lr)
+                            Sgd::new(lr)
                         })),
                         OptimizerType::Adam => Some(LayerOptimizer::Adam(Adam::new(lr, 0.9, 0.999, 1e-8))),
                     }
@@ -194,7 +194,7 @@ impl SimpleNN {
                 for (layer, opt) in self.layers.iter_mut().zip(self.optimizers.iter_mut()) {
                     if let Some(ref mut o) = opt {
                         match o {
-                            LayerOptimizer::SGD(s) => layer.update_sgd(s),
+                            LayerOptimizer::Sgd(s) => layer.update_sgd(s),
                             LayerOptimizer::Adam(a) => layer.update_adam(a),
                         }
                     }
@@ -282,7 +282,7 @@ mod tests {
             50,                 // epochs
             0.1,                // learning rate
             0.0,                // weight decay
-            OptimizerType::SGD, // optimizer
+            OptimizerType::Sgd, // optimizer
             2,                  // batch size
         );
 

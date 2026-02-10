@@ -1,7 +1,7 @@
 // # Loss functions (CrossEntropy, MSE)
 
 /// Calculates the cross-entropy loss (for Classification)
-pub fn cross_entropy(preds: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>) -> f32 {
+pub fn cross_entropy(preds: &[Vec<f32>], y: &[Vec<f32>]) -> f32 {
     preds.iter().zip(y.iter())
         .map(|(p_row, y_row)| {
             y_row.iter().zip(p_row.iter())
@@ -12,7 +12,7 @@ pub fn cross_entropy(preds: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>) -> f32 {
 }
 
 /// Calculates Mean Squared Error (for Regression)
-pub fn mse(preds: &Vec<Vec<f32>>, y: &Vec<Vec<f32>>) -> f32 {
+pub fn mse(preds: &[Vec<f32>], y: &[Vec<f32>]) -> f32 {
     let mut loss = 0.0;
     let n = preds.len() as f32;
 
