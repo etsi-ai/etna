@@ -1,11 +1,9 @@
 // Model training / prediction logic
-// Implements a simple neural network with mandatory mini-batch training
+// Implements a simple 2-layer neural network with mandatory mini-batch training
 
-use crate::layers::{
-    Activation, ActivationLayer, InitStrategy, Layer, LayerWrapper, Linear, SoftmaxLayer,
-};
+use crate::layers::{Activation, InitStrategy, Linear, Layer, LayerWrapper, ActivationLayer, SoftmaxLayer};
 use crate::loss_function::{cross_entropy, mse};
-use crate::optimizer::{Adam, Sgd};
+use crate::optimizer::{Adam, SGD};
 
 use serde::{Deserialize, Serialize};
 use std::fs::File;
@@ -23,7 +21,7 @@ pub enum TaskType {
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum OptimizerType {
-    Sgd,
+    SGD,
     Adam,
 }
 
@@ -36,20 +34,8 @@ pub struct SimpleNN {
 
 #[derive(Serialize, Deserialize)]
 enum LayerOptimizer {
-    #[serde(alias = "SGD")]
-    Sgd(Sgd),
+    SGD(SGD),
     Adam(Adam),
-}
-
-/// Configuration for training the network
-pub struct TrainConfig<'a> {
-    pub x: &'a [Vec<f32>],
-    pub y: &'a [Vec<f32>],
-    pub epochs: usize,
-    pub lr: f32,
-    pub weight_decay: f32,
-    pub optimizer_type: OptimizerType,
-    pub batch_size: usize,
 }
 
 impl SimpleNN {
@@ -60,15 +46,11 @@ impl SimpleNN {
         task_code: usize,
         activation: Activation,
     ) -> Self {
-        let task_type = if task_code == 1 {
-            TaskType::Regression
-        } else {
-            TaskType::Classification
-        };
-
+        let task_type = if task_code == 1 { TaskType::Regression } else { TaskType::Classification };
         let mut layers = Vec::new();
         let mut current_in = input_dim;
 
+        // Build the dynamic layer stack
         for &hidden_dim in &hidden_layers {
             layers.push(LayerWrapper::Linear(Linear::new_with_init(
                 current_in,
@@ -79,6 +61,7 @@ impl SimpleNN {
             current_in = hidden_dim;
         }
 
+        // Output Layer
         layers.push(LayerWrapper::Linear(Linear::new_with_init(
             current_in,
             output_dim,
@@ -89,15 +72,12 @@ impl SimpleNN {
             layers.push(LayerWrapper::Softmax(SoftmaxLayer::new()));
         }
 
-        Self {
-            layers,
-            task_type,
-            optimizers: vec![],
-        }
+        Self { layers, task_type, optimizers: vec![] }
     }
 
-    pub fn forward(&mut self, x: &[Vec<f32>]) -> Vec<Vec<f32>> {
-        let mut current_input = x.to_owned();
+    /// Forward pass (used by both training and prediction)
+    pub fn forward(&mut self, x: &Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        let mut current_input = x.clone();
 
         for layer in &mut self.layers {
             current_input = layer.forward(&current_input);
@@ -106,17 +86,20 @@ impl SimpleNN {
         current_input
     }
 
-    pub fn train(&mut self, config: TrainConfig<'_>) -> Vec<f32> {
-        let TrainConfig {
-            x,
-            y,
-            epochs,
-            lr,
-            weight_decay,
-            optimizer_type,
-            batch_size,
-        } = config;
-
+    /// Train the network using mandatory mini-batch training
+    /// Delegates to train_with_callback with a default print-based progress callback
+    #[allow(dead_code)]
+    pub fn train(
+        &mut self,
+        x: &Vec<Vec<f32>>,
+        y: &Vec<Vec<f32>>,
+        epochs: usize,
+        lr: f32,
+        weight_decay: f32,
+        optimizer_type: OptimizerType,
+        batch_size: usize,
+    ) -> Vec<f32> {
+        // Delegate to train_with_callback with a default print callback
         self.train_with_callback(
             x,
             y,
@@ -125,14 +108,20 @@ impl SimpleNN {
             weight_decay,
             optimizer_type,
             batch_size,
-            |_epoch, _total, _loss| {},
+            |epoch, total, loss| {
+                if epoch % 10 == 0 {
+                    println!("Epoch {}/{} - Loss: {:.4}", epoch, total, loss);
+                }
+            },
         )
     }
 
+    /// Train the network with a progress callback
+    /// The callback is called after each epoch with (epoch, total_epochs, loss)
     pub fn train_with_callback<F>(
         &mut self,
-        x: &[Vec<f32>],
-        y: &[Vec<f32>],
+        x: &Vec<Vec<f32>>,
+        y: &Vec<Vec<f32>>,
         epochs: usize,
         lr: f32,
         weight_decay: f32,
@@ -145,44 +134,39 @@ impl SimpleNN {
     {
         let mut loss_history = Vec::new();
 
+        // Initialize optimizers ONLY if they don't exist yet
         if self.optimizers.is_empty() {
-            self.optimizers = self
-                .layers
-                .iter()
-                .map(|l| {
-                    if let LayerWrapper::Linear(_) = l {
-                        match optimizer_type {
-                            OptimizerType::Sgd => Some(LayerOptimizer::Sgd(if weight_decay > 0.0 {
-                                Sgd::with_weight_decay(lr, weight_decay)
-                            } else {
-                                Sgd::new(lr)
-                            })),
-                            OptimizerType::Adam => {
-                                Some(LayerOptimizer::Adam(Adam::new(lr, 0.9, 0.999, 1e-8)))
-                            }
-                        }
-                    } else {
-                        None
+            self.optimizers = self.layers.iter().map(|l| {
+                if let LayerWrapper::Linear(_) = l {
+                    match optimizer_type {
+                        OptimizerType::SGD => Some(LayerOptimizer::SGD(if weight_decay > 0.0 {
+                            SGD::with_weight_decay(lr, weight_decay)
+                        } else {
+                            SGD::new(lr)
+                        })),
+                        OptimizerType::Adam => Some(LayerOptimizer::Adam(Adam::new(lr, 0.9, 0.999, 1e-8))),
                     }
-                })
-                .collect();
+                } else {
+                    None
+                }
+            }).collect();
         }
 
         for epoch in 0..epochs {
+            // ---- Shuffle data at the start of each epoch ----
             let mut indices: Vec<usize> = (0..x.len()).collect();
             indices.shuffle(&mut rng());
 
             let mut epoch_loss = 0.0;
             let mut batch_count = 0;
 
+            // Iterate over shuffled data using fixed-size mini-batches
             for batch_start in (0..x.len()).step_by(batch_size) {
                 let batch_end = (batch_start + batch_size).min(x.len());
                 let batch_indices = &indices[batch_start..batch_end];
 
-                let x_batch: Vec<Vec<f32>> =
-                    batch_indices.iter().map(|&i| x[i].clone()).collect();
-                let y_batch: Vec<Vec<f32>> =
-                    batch_indices.iter().map(|&i| y[i].clone()).collect();
+                let x_batch: Vec<Vec<f32>> = batch_indices.iter().map(|&i| x[i].clone()).collect();
+                let y_batch: Vec<Vec<f32>> = batch_indices.iter().map(|&i| y[i].clone()).collect();
 
                 let preds = self.forward(&x_batch);
 
@@ -193,30 +177,24 @@ impl SimpleNN {
                     }
                     TaskType::Regression => {
                         let loss_val = mse(&preds, &y_batch);
-                        let grad = preds
-                            .iter()
-                            .zip(y_batch.iter())
-                            .map(|(p_row, y_row)| {
-                                p_row
-                                    .iter()
-                                    .zip(y_row.iter())
-                                    .map(|(p, t)| p - t)
-                                    .collect()
-                            })
+                        let grad = preds.iter().zip(y_batch.iter())
+                            .map(|(p_row, y_row)| p_row.iter().zip(y_row.iter()).map(|(p, t)| p - t).collect())
                             .collect();
                         (loss_val, grad)
                     }
                 };
 
+                // ---- Backward pass (Reverse iteration) ----
                 let mut current_grad = grad_output;
                 for layer in self.layers.iter_mut().rev() {
                     current_grad = layer.backward(&current_grad);
                 }
 
+                // ---- Parameter update ----
                 for (layer, opt) in self.layers.iter_mut().zip(self.optimizers.iter_mut()) {
                     if let Some(ref mut o) = opt {
                         match o {
-                            LayerOptimizer::Sgd(s) => layer.update_sgd(s),
+                            LayerOptimizer::SGD(s) => layer.update_sgd(s),
                             LayerOptimizer::Adam(a) => layer.update_adam(a),
                         }
                     }
@@ -229,13 +207,16 @@ impl SimpleNN {
             let avg_loss = epoch_loss / batch_count as f32;
             loss_history.push(avg_loss);
 
+            // Call the progress callback instead of printing
             progress_callback(epoch, epochs, avg_loss);
         }
 
         loss_history
     }
 
-    pub fn predict(&mut self, x: &[Vec<f32>]) -> Vec<f32> {
+    /// Run inference on input data (no gradient tracking)
+
+    pub fn predict(&mut self, x: &Vec<Vec<f32>>) -> Vec<f32> {
         let output = self.forward(x);
 
         match self.task_type {
@@ -268,14 +249,23 @@ impl SimpleNN {
         Ok(model)
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// Verifies that mini-batch training reduces loss over time.
+    ///
+    /// This test uses a tiny XOR-like dataset and ensures that
+    /// average training loss decreases when using mini-batches.
     #[test]
     fn training_loss_decreases_with_minibatch() {
-        let mut model = SimpleNN::new(2, vec![4], 1, 1, Activation::ReLU);
+        let mut model = SimpleNN::new(
+            2, // input_dim
+            vec![4], // hidden_layers
+            1, // output_dim
+            1, // regression task
+            Activation::ReLU,
+        );
 
         let x = vec![
             vec![0.0, 0.0],
@@ -286,16 +276,17 @@ mod tests {
 
         let y = vec![vec![0.0], vec![1.0], vec![1.0], vec![0.0]];
 
-        let losses = model.train(TrainConfig {
-            x: &x,
-            y: &y,
-            epochs: 50,
-            lr: 0.1,
-            weight_decay: 0.0,
-            optimizer_type: OptimizerType::Sgd,
-            batch_size: 2,
-        });
+        let losses = model.train(
+            &x,
+            &y,
+            50,                 // epochs
+            0.1,                // learning rate
+            0.0,                // weight decay
+            OptimizerType::SGD, // optimizer
+            2,                  // batch size
+        );
 
+        // Ensure training progresses in the right direction
         assert!(
             losses.last().unwrap() < losses.first().unwrap(),
             "Expected training loss to decrease with mini-batch training"
