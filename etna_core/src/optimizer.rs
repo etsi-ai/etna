@@ -1,30 +1,30 @@
-// Optimizers (SGD, Adam)
-
-/// Simple Stochastic Gradient Descent (SGD) optimizer with optional L2 regularization (weight decay)
-///
-/// L2 regularization adds a penalty term to the loss function: L_reg = L + (lambda/2) * ||W||^2
-/// The gradient becomes: grad_W = grad_L + lambda * W
-/// This encourages smaller weights and helps prevent overfitting.
+//! Optimizers (Sgd, Adam)
+//!
+//! Simple Stochastic Gradient Descent (Sgd) optimizer with optional L2 regularization (weight decay)
+//!
+//! L2 regularization adds a penalty term to the loss function: L_reg = L + (lambda/2) * ||W||^2
+//! The gradient becomes: grad_W = grad_L + lambda * W
+//! This encourages smaller weights and helps prevent overfitting.
 
 use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize)]
-pub struct SGD {
+pub struct Sgd {
     pub learning_rate: f32,
     pub weight_decay: f32,  // L2 regularization coefficient (lambda)
 }
 
-impl SGD {
+impl Sgd {
     pub fn new(learning_rate: f32) -> Self {
-        SGD {
+        Sgd {
             learning_rate,
             weight_decay: 0.0,  // Default: no regularization
         }
     }
 
-    /// Create SGD optimizer with L2 regularization (weight decay)
+    /// Create Sgd optimizer with L2 regularization (weight decay)
     pub fn with_weight_decay(learning_rate: f32, weight_decay: f32) -> Self {
-        SGD {
+        Sgd {
             learning_rate,
             weight_decay,
         }
@@ -64,10 +64,10 @@ impl Adam {
 
     pub fn step(
         &mut self,
-        weights: &mut Vec<Vec<f32>>,
-        grad_w: &Vec<Vec<f32>>,
-        bias: &mut Vec<f32>,
-        grad_b: &Vec<f32>,
+        weights: &mut [Vec<f32>],
+        grad_w: &[Vec<f32>],
+        bias: &mut [f32],
+        grad_b: &[f32],
     ) {
         self.t += 1;
 
@@ -118,14 +118,14 @@ mod tests {
 
     #[test]
     fn sgd_with_weight_decay_creates_correctly() {
-        let optimizer = SGD::with_weight_decay(0.01, 0.001);
+        let optimizer = Sgd::with_weight_decay(0.01, 0.001);
         assert!((optimizer.learning_rate - 0.01).abs() < 1e-6);
         assert!((optimizer.weight_decay - 0.001).abs() < 1e-6);
     }
 
     #[test]
     fn sgd_default_has_no_weight_decay() {
-        let optimizer = SGD::new(0.1);
+        let optimizer = Sgd::new(0.1);
         assert!((optimizer.weight_decay - 0.0).abs() < 1e-6);
     }
 
