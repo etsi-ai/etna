@@ -38,6 +38,8 @@ def test_tqdm_progress_bar():
         import importlib
         import etna.api
         importlib.reload(etna.api)
+        # Ensure the reloaded module uses our mock, not the real compiled extension
+        etna.api._etna_rust = mock_etna_rust
         
         # Patch load_data and Preprocessor
         with patch.object(etna.api, 'load_data') as mock_load:

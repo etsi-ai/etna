@@ -87,10 +87,14 @@ class Model:
         print("[*] Preprocessing data...")
         X, y = self.preprocessor.fit_transform(self.df, self.target)
 
-        # Cache training data for predict() without arguments
-        self._cached_X = np.array(X)
+        # Ensure contiguous float32 arrays for zero-copy transfer to Rust
+        X = np.ascontiguousarray(X, dtype=np.float32)
+        y = np.ascontiguousarray(y, dtype=np.float32)
 
-        self.input_dim = len(X[0])
+        # Cache training data for predict() without arguments
+        self._cached_X = X
+
+        self.input_dim = X.shape[1]
         self.output_dim = self.preprocessor.output_dim
 
         optimizer_lower = optimizer.lower()
@@ -155,6 +159,8 @@ class Model:
             df = load_data(data_path)
             print("Transforming input data...")
             X_new = self.preprocessor.transform(df)
+            # Ensure contiguous float32 array for zero-copy transfer to Rust
+            X_new = np.ascontiguousarray(X_new, dtype=np.float32)
 
         # Case 2: Predict on cached training data
         else:
@@ -163,8 +169,7 @@ class Model:
                     "No data available for prediction. "
                     "Pass a CSV path to predict(data_path=...)."
                 )
-            # Convert numpy array to list for Rust
-            X_new = self._cached_X.tolist() if isinstance(self._cached_X, np.ndarray) else self._cached_X
+            X_new = np.ascontiguousarray(self._cached_X, dtype=np.float32)
 
         preds = self.rust_model.predict(X_new)
 
