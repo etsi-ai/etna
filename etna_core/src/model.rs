@@ -155,7 +155,8 @@ impl SimpleNN {
         for epoch in 0..epochs {
             // ---- Shuffle data at the start of each epoch ----
             let mut indices: Vec<usize> = (0..x.len()).collect();
-            indices.shuffle(&mut rng());
+            let mut rng = rng();
+            indices.shuffle(&mut rng);
 
             let mut epoch_loss = 0.0;
             let mut batch_count = 0;
