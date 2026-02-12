@@ -230,7 +230,6 @@ impl SimpleNN {
                     bad_epochs = 0;
 
                     if restore_best {
-                        // Snapshot full model state (layers + optimizer state)
                         best_state_json = serde_json::to_string(self).ok();
                     }
                 } else {
@@ -249,8 +248,16 @@ impl SimpleNN {
 
         if early_stopping && restore_best {
             if let Some(json) = best_state_json {
-                if let Ok(best_model) = serde_json::from_str::<SimpleNN>(&json) {
-                    *self = best_model;
+                match serde_json::from_str::<SimpleNN>(&json) {
+                    Ok(best_model) => {
+                        *self = best_model;
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "Warning: failed to restore best model state during early stopping: {}",
+                            e
+                        );
+                    }
                 }
             }
         }
