@@ -19,7 +19,7 @@ fn ndarray_to_vec2(arr: PyReadonlyArray2<'_, f32>) -> Vec<Vec<f32>> {
     array
         .rows()
         .into_iter()
-        .map(|row: numpy::ndarray::ArrayView1<'_, f32>| row.to_vec())
+        .map(|row| row.to_vec())
         .collect()
 }
 
