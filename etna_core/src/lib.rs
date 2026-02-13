@@ -48,7 +48,7 @@ impl EtnaModel {
         }
     }
 
-    #[pyo3(signature = (x, y, epochs, lr, batch_size=32, weight_decay=0.0, optimizer="sgd", progress_callback=None))]
+    #[pyo3(signature = (x, y, epochs, lr, batch_size=32, weight_decay=0.0, optimizer="sgd", early_stopping=false, patience=10, restore_best=true, progress_callback=None))]
     #[allow(clippy::too_many_arguments)]
     fn train(
         &mut self,
@@ -60,6 +60,9 @@ impl EtnaModel {
         batch_size: usize,
         weight_decay: f32,
         optimizer: &str,
+        early_stopping: bool,
+        patience: usize,
+        restore_best: bool,
         progress_callback: Option<Py<PyAny>>,
     ) -> PyResult<Vec<f32>> {
         let x_vec = pylist_to_vec2(x)?;
@@ -86,6 +89,9 @@ impl EtnaModel {
             weight_decay,
             optimizer_type,
             batch_size,
+            early_stopping,
+            patience,
+            restore_best,
             callback,
         );
 

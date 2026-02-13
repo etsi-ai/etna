@@ -67,16 +67,29 @@ class Model:
         # Cached transformed data for persistence-safe prediction
         self._cached_X = None
 
-    def train(self, epochs: int = 100, lr: float = 0.01, batch_size: int = 32, weight_decay: float = 0.0, optimizer: str = 'sgd'):
+    def train(
+        self,
+        epochs: int = 100,
+        lr: float = 0.01,
+        batch_size: int = 32,
+        weight_decay: float = 0.0,
+        optimizer: str = "sgd",
+        early_stopping: bool = False,
+        patience: int = 10,
+        restore_best: bool = True,
+    ):
         """
         Train the model.
 
         Args:
-            epochs: Number of training epochs
-            lr: Learning rate
-            batch_size: Number of samples per gradient update (default: 32)
-            weight_decay: L2 regularization coefficient (lambda)
-            optimizer: Optimizer to use ('sgd' or 'adam')
+            epochs: Number of training epochs.
+            lr: Learning rate.
+            batch_size: Number of samples per gradient update (default: 32).
+            weight_decay: L2 regularization coefficient (lambda).
+            optimizer: Optimizer to use ('sgd' or 'adam').
+            early_stopping: If True, stop training when loss stops improving.
+            patience: Number of epochs with no improvement before stopping.
+            restore_best: If True, restore weights from the best epoch.
         """
         if _etna_rust is None:
             raise ImportError(
@@ -128,8 +141,17 @@ class Model:
         
         # Single Rust call - training loop stays in Rust for performance
         new_losses = self.rust_model.train(
-            X, y, epochs, lr, batch_size, weight_decay, 
-            optimizer_lower, progress_callback=progress_callback
+            X,
+            y,
+            epochs,
+            lr,
+            batch_size,
+            weight_decay,
+            optimizer_lower,
+            early_stopping,
+            patience,
+            restore_best,
+            progress_callback=progress_callback,
         )
         
         pbar.close()

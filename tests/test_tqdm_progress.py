@@ -18,8 +18,20 @@ def test_tqdm_progress_bar():
     mock_etna_rust = MagicMock()
     mock_model = MagicMock()
     
-    # Simulate train() that accepts a progress_callback and calls it
-    def mock_train(X, y, epochs, lr, batch_size, weight_decay, optimizer, progress_callback=None):
+    # Simulate train() that accepts early-stopping params and a progress_callback and calls it
+    def mock_train(
+        X,
+        y,
+        epochs,
+        lr,
+        batch_size,
+        weight_decay,
+        optimizer,
+        early_stopping=False,
+        patience=10,
+        restore_best=True,
+        progress_callback=None,
+    ):
         losses = []
         for epoch in range(epochs):
             loss = 0.5 - (epoch * 0.01)  # Simulate decreasing loss
@@ -60,9 +72,13 @@ def test_tqdm_progress_bar():
                 call_args = mock_model.train.call_args
                 args, kwargs = call_args
                 assert args[2] == 5, f"Expected epochs=5, got {args[2]}"
-                
+                # Verify early-stopping defaults were passed
+                assert args[7] is False, "Expected early_stopping to default to False"
+                assert args[8] == 10, "Expected default patience=10"
+                assert args[9] is True, "Expected default restore_best=True"
+
                 # Verify a callback was passed
-                callback = args[7] if len(args) > 7 else kwargs.get('progress_callback')
+                callback = args[10] if len(args) > 10 else kwargs.get('progress_callback')
                 assert callback is not None, "Expected progress_callback to be passed"
                 
                 # Verify loss history was populated

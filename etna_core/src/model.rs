@@ -108,6 +108,9 @@ impl SimpleNN {
             weight_decay,
             optimizer_type,
             batch_size,
+            false, // early_stopping
+            10,    // patience (unused when early_stopping=false)
+            true,  // restore_best (unused when early_stopping=false)
             |epoch, total, loss| {
                 if epoch % 10 == 0 {
                     println!("Epoch {}/{} - Loss: {:.4}", epoch, total, loss);
@@ -127,12 +130,20 @@ impl SimpleNN {
         weight_decay: f32,
         optimizer_type: OptimizerType,
         batch_size: usize,
+        early_stopping: bool,
+        patience: usize,
+        restore_best: bool,
         progress_callback: F,
     ) -> Vec<f32>
     where
         F: Fn(usize, usize, f32),
     {
         let mut loss_history = Vec::new();
+        let patience = if early_stopping && patience == 0 { 1 } else { patience };
+        let mut best_loss = f32::INFINITY;
+        let mut best_epoch = 0usize;
+        let mut bad_epochs = 0usize;
+        let mut best_state_json: Option<String> = None;
 
         // Initialize optimizers ONLY if they don't exist yet
         if self.optimizers.is_empty() {
@@ -210,6 +221,45 @@ impl SimpleNN {
 
             // Call the progress callback instead of printing
             progress_callback(epoch, epochs, avg_loss);
+
+            if early_stopping {
+                // Treat a strictly lower loss as an improvement (with tiny epsilon for float noise)
+                if avg_loss < best_loss - 1e-12 {
+                    best_loss = avg_loss;
+                    best_epoch = epoch;
+                    bad_epochs = 0;
+
+                    if restore_best {
+                        best_state_json = serde_json::to_string(self).ok();
+                    }
+                } else {
+                    bad_epochs += 1;
+
+                    if bad_epochs >= patience {
+                        println!(
+                            "Early stopping triggered at epoch {} (best epoch {} with loss {:.6}).",
+                            epoch, best_epoch, best_loss
+                        );
+                        break;
+                    }
+                }
+            }
+        }
+
+        if early_stopping && restore_best {
+            if let Some(json) = best_state_json {
+                match serde_json::from_str::<SimpleNN>(&json) {
+                    Ok(best_model) => {
+                        *self = best_model;
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "Warning: failed to restore best model state during early stopping: {}",
+                            e
+                        );
+                    }
+                }
+            }
         }
 
         loss_history
