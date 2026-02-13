@@ -127,7 +127,7 @@ class Preprocessor:
             y_scaled = (y_vals - self.target_mean) / self.target_std
             y_final = y_scaled.reshape(-1, 1)
 
-        return X_final.tolist(), y_final.tolist()
+        return X_final, y_final
     
         
     # -------------------------------------------------
@@ -160,7 +160,7 @@ class Preprocessor:
             X_processed.append(one_hot)
 
         X_final = np.hstack(X_processed) if X_processed else np.empty((len(df), 0))
-        return X_final.tolist()
+        return X_final
 
     def get_state(self):
         return {

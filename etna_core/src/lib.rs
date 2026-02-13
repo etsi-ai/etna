@@ -6,18 +6,21 @@ mod loss_function;
 mod optimizer;
 
 use pyo3::prelude::*;
-use pyo3::types::PyList;
 use pyo3::Py;
+use numpy::PyReadonlyArray2;
 
 use crate::layers::Activation;
 use crate::model::{OptimizerType, SimpleNN};
 
-/// Safe conversion helper
-fn pylist_to_vec2(pylist: &Bound<'_, PyList>) -> PyResult<Vec<Vec<f32>>> {
-    pylist
-        .iter()
-        .map(|item| item.extract::<Vec<f32>>())
-        .collect::<Result<Vec<_>, _>>()
+/// Zero-copy conversion: reads directly from NumPy's contiguous buffer
+/// instead of iterating over Python list objects one element at a time.
+fn ndarray_to_vec2(arr: PyReadonlyArray2<'_, f32>) -> Vec<Vec<f32>> {
+    let array = arr.as_array();
+    array
+        .rows()
+        .into_iter()
+        .map(|row| row.to_vec())
+        .collect()
 }
 
 /// Python Class Wrapper
@@ -53,8 +56,8 @@ impl EtnaModel {
     fn train(
         &mut self,
         py: Python<'_>,
-        x: &Bound<'_, PyList>,
-        y: &Bound<'_, PyList>,
+        x: PyReadonlyArray2<'_, f32>,
+        y: PyReadonlyArray2<'_, f32>,
         epochs: usize,
         lr: f32,
         batch_size: usize,
@@ -65,9 +68,8 @@ impl EtnaModel {
         restore_best: bool,
         progress_callback: Option<Py<PyAny>>,
     ) -> PyResult<Vec<f32>> {
-        let x_vec = pylist_to_vec2(x)?;
-        let y_vec = pylist_to_vec2(y)?;
-
+        let x_vec = ndarray_to_vec2(x);
+        let y_vec = ndarray_to_vec2(y);
         let optimizer_type = match optimizer {
             "adam" => OptimizerType::Adam,
             _ => OptimizerType::Sgd,
@@ -98,8 +100,8 @@ impl EtnaModel {
         Ok(history)
     }
 
-    fn predict(&mut self, x: &Bound<'_, PyList>) -> PyResult<Vec<f32>> {
-        let x_vec = pylist_to_vec2(x)?;
+    fn predict(&mut self, x: PyReadonlyArray2<'_, f32>) -> PyResult<Vec<f32>> {
+        let x_vec = ndarray_to_vec2(x);
         Ok(self.inner.predict(&x_vec))
     }
 
