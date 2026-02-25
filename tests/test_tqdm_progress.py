@@ -65,7 +65,7 @@ def test_tqdm_progress_bar():
                 
                 # Create model and train with progress bar
                 model = etna.api.Model("dummy.csv", "target", task_type="classification")
-                model.train(epochs=5, lr=0.01)
+                model.train(epochs=5, lr=0.01, validation_split=0.0)
                 
                 # Verify train was called only ONCE (all epochs in Rust)
                 assert mock_model.train.call_count == 1, f"Expected 1 train call, got {mock_model.train.call_count}"

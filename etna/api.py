@@ -32,6 +32,7 @@ class Model:
         self.target = target
         self.df = load_data(file_path)
         self.loss_history = []
+        self.val_loss_history = []
 
         # --- SEED LOGIC ---
         self.seed = seed
@@ -67,6 +68,34 @@ class Model:
         # Cached transformed data for persistence-safe prediction
         self._cached_X = None
 
+    def _calculate_validation_loss(self, X_val, y_val):
+        """
+        Calculate validation loss using the Rust model's forward pass.
+
+        Args:
+            X_val: Validation features (numpy array).
+            y_val: Validation targets (numpy array).
+
+        Returns:
+            float: Validation loss value.
+        """
+        preds = self.rust_model.forward(X_val)
+
+        if self.task_type == "classification":
+            # Cross-entropy loss
+            loss = 0.0
+            for p_row, y_row in zip(preds, y_val):
+                for p_val, y_true in zip(p_row, y_row):
+                    loss += -y_true * np.log(p_val + 1e-7)
+            return loss / len(preds)
+        else:
+            # MSE loss
+            loss = 0.0
+            for p_row, y_row in zip(preds, y_val):
+                for p_val, y_true in zip(p_row, y_row):
+                    loss += (p_val - y_true) ** 2
+            return loss / len(preds)
+
     def train(
         self,
         epochs: int = 100,
@@ -77,6 +106,7 @@ class Model:
         early_stopping: bool = False,
         patience: int = 10,
         restore_best: bool = True,
+        validation_split: float = 0.2,
     ):
         """
         Train the model.
@@ -90,11 +120,18 @@ class Model:
             early_stopping: If True, stop training when loss stops improving.
             patience: Number of epochs with no improvement before stopping.
             restore_best: If True, restore weights from the best epoch.
+            validation_split: Fraction of data to use for validation (0.0 to 1.0).
+                              Set to 0.0 to disable validation. Default: 0.2.
         """
         if _etna_rust is None:
             raise ImportError(
                 "Rust core is not available. Please build the Rust extension "
                 "before calling model.train()."
+            )
+
+        if not (0.0 <= validation_split < 1.0):
+            raise ValueError(
+                f"validation_split must be >= 0.0 and < 1.0, got {validation_split}"
             )
 
         print("[*] Preprocessing data...")
@@ -104,7 +141,32 @@ class Model:
         X = np.ascontiguousarray(X, dtype=np.float32)
         y = np.ascontiguousarray(y, dtype=np.float32)
 
-        # Cache training data for predict() without arguments
+        # --- Validation Split ---
+        X_val = None
+        y_val = None
+        if validation_split > 0.0:
+            n_samples = X.shape[0]
+            n_val = max(1, int(n_samples * validation_split))
+
+            # Shuffle indices before splitting (use seed for reproducibility)
+            rng = np.random.default_rng(self.seed)
+            indices = rng.permutation(n_samples)
+
+            val_indices = indices[:n_val]
+            train_indices = indices[n_val:]
+
+            X_val = np.ascontiguousarray(X[val_indices], dtype=np.float32)
+            y_val = np.ascontiguousarray(y[val_indices], dtype=np.float32)
+            X_train = np.ascontiguousarray(X[train_indices], dtype=np.float32)
+            y_train = np.ascontiguousarray(y[train_indices], dtype=np.float32)
+
+            print(f"[*] Data split: {len(train_indices)} training samples, {len(val_indices)} validation samples")
+        else:
+            X_train = X
+            y_train = y
+            print("[*] Validation disabled (validation_split=0.0)")
+
+        # Cache full data for predict() without arguments
         self._cached_X = X
 
         self.input_dim = X.shape[1]
@@ -114,7 +176,6 @@ class Model:
         if optimizer_lower not in ['sgd', 'adam']:
             raise ValueError(f"Unsupported optimizer '{optimizer}'. Choose 'sgd' or 'adam'.")
 
-        # LOGICAL FIX: Only initialize if model doesn't exist
         # Only initialize if model doesn't exist (supports incremental training)
         if self.rust_model is None:
             print(f"[*] Initializing Rust Core [In: {self.input_dim}, Out: {self.output_dim}]...")
@@ -138,15 +199,24 @@ class Model:
         # Create tqdm progress bar
         pbar = tqdm(total=epochs, desc="Training", unit="epoch")
         
+        # Storage for per-epoch validation losses computed inside callback
+        epoch_val_losses = []
+
         # Callback function that Rust calls after each epoch
         def progress_callback(epoch, total, loss):
             pbar.update(1)
-            pbar.set_description(f"Loss: {loss:.4f}")
+            # Compute validation loss if validation data is available
+            if X_val is not None and y_val is not None:
+                val_loss = self._calculate_validation_loss(X_val, y_val)
+                epoch_val_losses.append(val_loss)
+                pbar.set_description(f"Loss: {loss:.4f} | Val Loss: {val_loss:.4f}")
+            else:
+                pbar.set_description(f"Loss: {loss:.4f}")
         
         # Single Rust call - training loop stays in Rust for performance
         new_losses = self.rust_model.train(
-            X,
-            y,
+            X_train,
+            y_train,
             epochs,
             lr,
             batch_size,
@@ -160,6 +230,7 @@ class Model:
         
         pbar.close()
         self.loss_history.extend(new_losses)
+        self.val_loss_history.extend(epoch_val_losses)
         print("[+] Training complete!")
 
     def predict(self, data_path: str = None):
@@ -267,6 +338,8 @@ class Model:
                     mlflow.log_param("target_column", self.target)
                     for epoch, loss in enumerate(self.loss_history):
                         mlflow.log_metric("loss", loss, step=epoch)
+                    for epoch, val_loss in enumerate(self.val_loss_history):
+                        mlflow.log_metric("val_loss", val_loss, step=epoch)
                     mlflow.log_artifact(path)
                     mlflow.log_artifact(preprocessor_path)
                 print("Model saved & tracked!")
@@ -323,6 +396,7 @@ class Model:
         self.file_path = None
         self.df = None
         self.loss_history = []
+        self.val_loss_history = []
 
         print("[+] Model loaded successfully!")
         return self

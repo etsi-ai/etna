@@ -100,6 +100,12 @@ impl EtnaModel {
         Ok(history)
     }
 
+    /// Expose raw forward pass outputs (pre-argmax) for validation loss computation.
+    fn forward(&mut self, x: PyReadonlyArray2<'_, f32>) -> PyResult<Vec<Vec<f32>>> {
+        let x_vec = ndarray_to_vec2(x);
+        Ok(self.inner.forward(&x_vec))
+    }
+
     fn predict(&mut self, x: PyReadonlyArray2<'_, f32>) -> PyResult<Vec<f32>> {
         let x_vec = ndarray_to_vec2(x);
         Ok(self.inner.predict(&x_vec))
